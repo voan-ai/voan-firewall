@@ -150,6 +150,15 @@ from voan.adapters import guard_langchain
 guard_langchain(my_langchain_tools)
 ```
 
+…or guard a real **MCP client session** — Voan's protocol-level sensor checks every
+`call_tool` before the request leaves the client for the server (so it covers MCP
+tools the in-process hook can't):
+
+```python
+from voan.adapters import guard_mcp
+guard_mcp(mcp_client_session, fw)   # see examples/mcp_demo.py
+```
+
 ## See it work
 
 ```bash
@@ -164,7 +173,7 @@ python eval/run_eval.py                # reproduce the eval numbers above
 
 - **Sensor** ([`hook.py`](voan/hook.py)) — in-process wrapper on every tool call.
   In-process means it covers Python (and, via the port, JS) agent tools you can
-  wrap; protocol-level/MCP coverage is on the roadmap.
+  wrap — plus **MCP client sessions** via `guard_mcp` (a protocol-level sensor).
 - **Brain** ([`policy.py`](voan/policy.py) + [`rules.py`](voan/rules.py)) — fast
   regex tier; first matching rule wins. It is a **signature blocklist that is
   default-allow** out of the box (flip to deny-by-default, or rely on the judge,
@@ -197,7 +206,8 @@ vulnerability, see [SECURITY.md](SECURITY.md).
 
 - Real-trace eval harness (the production FP/FN number)
 - LLM judge parity in the JS port
-- MCP proxy sensor (protocol-level, framework-agnostic)
+- MCP: `guard_mcp` guards a client session today; a transparent stdio/HTTP proxy
+  (zero-integration, framework-agnostic) is next
 - Deny-by-default presets for sensitive tool families
 - Hosted policy management + team audit (the commercial open-core layer)
 

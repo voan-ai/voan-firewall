@@ -15,7 +15,7 @@ crashing.
 import functools
 
 from .hook import Firewall
-from .schema import BlockedAction
+from .schema import Action, BlockedAction, Decision
 
 
 def _fw(firewall):
@@ -69,3 +69,33 @@ def guard_callables(fns, firewall=None):
     """Guard a plain list of callables, preserving order."""
     fw = _fw(firewall)
     return [_soft(fw.guard(f)) for f in fns]
+
+
+def guard_mcp(session, firewall=None):
+    """Guard an MCP ClientSession — the protocol-level sensor.
+
+    MCP tools run in a separate server over a transport, so the in-process hook
+    can't wrap them. Instead we wrap the client's `call_tool`, so every tool call
+    flows through Voan's policy BEFORE the request leaves the client for the server.
+    On block it returns an error CallToolResult (the agent sees a tool error and can
+    defer) instead of forwarding. Returns the same session (mutated)."""
+    fw = _fw(firewall)
+    orig = session.call_tool
+
+    @functools.wraps(orig)
+    async def guarded(name, arguments=None, *a, **k):
+        action = Action(tool=name, args=arguments or {}, agent=fw.agent)
+        verdict = fw._judge(action, fw._egress(action, fw.policy.evaluate(action)))
+        fw.audit.record(action, verdict)
+        deny = verdict.decision == Decision.BLOCK or (
+            verdict.decision == Decision.ASK and
+            not (fw.on_ask and fw.on_ask(action, verdict)))
+        if deny and fw.mode != "monitor":
+            from mcp.types import CallToolResult, TextContent
+            return CallToolResult(isError=True, content=[TextContent(
+                type="text", text=f"\U0001f6d1 Voan blocked {name}(): "
+                f"{verdict.reason} [{verdict.code} {verdict.severity}]")])
+        return await orig(name, arguments, *a, **k)
+
+    session.call_tool = guarded
+    return session
