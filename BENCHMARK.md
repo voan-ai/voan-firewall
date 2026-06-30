@@ -192,10 +192,29 @@ encoded/look-alike destinations). Findings, all pinned as regression tests in
   would over-block order ids / amounts / timestamps; destination-*named* fields are
   fail-closed and do catch it. These are the layered-defense seams, stated plainly.
 
+## Performance ([`benchmark/perf.py`](benchmark/perf.py))
+
+The deterministic tiers run inline on every tool call, so their cost matters.
+Measured locally, 50k iterations each (your numbers vary with hardware):
+
+| tier | per call | throughput |
+|---|--:|--:|
+| `policy.evaluate` — benign (no rule hits) | ~1 µs | ~1,000,000 calls/s |
+| `policy.evaluate` — danger (regex matches) | ~7 µs | ~150,000 calls/s |
+| `egress_violation` (walks all args) | ~4–8 µs | ~150,000 calls/s |
+| full `guard` wrapper (rules+egress+audit+gate) | ~100 µs | ~10,000 calls/s |
+| **judge** (stub backend) | — | one **LLM round-trip** (~0.1–2 s) |
+
+So the rules/egress tiers are sub-millisecond and effectively free on the hot
+path; the judge is the only expensive tier because it's an LLM call — enable it
+for gray-zone tools, not every call. (The judge cost above is a zero-latency stub
+isolating Voan's own overhead; real latency is whatever your backend takes.)
+
 ## Reproduce
 
 ```bash
 pip install "voan[examples]"
 python benchmark/run_benchmark.py            # prompt-hardening test (gpt-4o-mini)
 python benchmark/strong_attacks.py gpt-5.4-mini   # frontier-model strong attacks
+python benchmark/perf.py                      # tier latency / throughput (no API key)
 ```
