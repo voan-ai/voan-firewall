@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "voanfw"
+version = "0.1.0"
+description = "Voan Firewall — runtime guard for AI agents. Sits inline on every tool call and blocks unauthorized actions (RCE, exfiltration, data loss) before they execute."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Voan", email = "hello@voan.ai" }]
+keywords = ["ai-security", "llm-security", "agentic", "agent-firewall",
+            "runtime-security", "mcp", "owasp-agentic", "guardrails"]
+# The SDK itself is pure stdlib — zero runtime dependencies on purpose, so it is
+# safe to drop into any agent process.
+dependencies = []
+
+[project.optional-dependencies]
+# Only needed to run the live dashboard (server/app.py).
+dashboard = ["fastapi>=0.110", "uvicorn>=0.29"]
+
+[project.urls]
+Homepage = "https://voan.ai"
+
+[tool.setuptools]
+packages = ["voanfw"]

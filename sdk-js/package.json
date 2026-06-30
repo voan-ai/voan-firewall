@@ -1,0 +1,30 @@
+{
+  "name": "voanfw",
+  "version": "0.1.0",
+  "description": "Voan Firewall — runtime guard for AI agents. Sits inline on every tool call and blocks unauthorized actions (RCE, exfiltration, data loss) before they execute.",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "demo": "node demo.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "ai-security",
+    "llm-security",
+    "agentic",
+    "agent-firewall",
+    "runtime-security",
+    "guardrails"
+  ],
+  "license": "Apache-2.0",
+  "homepage": "https://voan.ai",
+  "engines": {
+    "node": ">=22.6"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}

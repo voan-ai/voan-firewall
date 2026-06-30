@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<!-- Voan Firewall live dashboard. Connects to /ws, replays /api/events on load,
+     and renders each agent action as it is allowed / held / blocked. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voan Firewall — live</title>
+<style>
+  :root { --bg:#0b0e14; --panel:#141925; --line:#232a3b; --txt:#e6e9f0;
+          --mut:#8a93a6; --allow:#2e7d32; --ask:#f9a825; --block:#e53935; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt);
+         font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
+  header { display:flex; align-items:center; gap:14px; padding:16px 22px;
+           border-bottom:1px solid var(--line); }
+  header h1 { font-size:17px; margin:0; letter-spacing:.5px; }
+  header .dot { width:9px; height:9px; border-radius:50%; background:var(--block); }
+  header .dot.on { background:var(--allow); }
+  .mut { color:var(--mut); }
+  .stats { display:flex; gap:10px; margin-left:auto; }
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:8px;
+          padding:6px 14px; text-align:center; min-width:74px; }
+  .stat b { display:block; font-size:20px; }
+  .stat.allow b { color:var(--allow); } .stat.ask b { color:var(--ask); }
+  .stat.block b { color:var(--block); }
+  main { padding:14px 22px; }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; color:var(--mut); font-weight:600; padding:6px 10px;
+       border-bottom:1px solid var(--line); font-size:12px; }
+  td { padding:8px 10px; border-bottom:1px solid var(--line);
+       vertical-align:top; }
+  tr.row { animation:flash .8s ease-out; }
+  @keyframes flash { from { background:#1b2233; } to { background:transparent; } }
+  .tag { padding:1px 9px; border-radius:20px; font-size:11px; font-weight:700;
+         text-transform:uppercase; letter-spacing:.4px; }
+  .tag.allow { background:rgba(46,125,50,.18); color:#7bd389; }
+  .tag.ask { background:rgba(249,168,37,.18); color:#ffce6b; }
+  .tag.block { background:rgba(229,57,53,.18); color:#ff8a85; }
+  .tool { font-weight:700; }
+  .args { color:var(--mut); white-space:pre-wrap; word-break:break-all;
+          max-width:520px; }
+  .reason { color:var(--mut); font-size:12px; }
+  .empty { color:var(--mut); padding:40px; text-align:center; }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="dot"></span>
+  <h1>VOAN <span class="mut">/ firewall</span></h1>
+  <div class="stats">
+    <div class="stat allow"><b id="c-allow">0</b>allowed</div>
+    <div class="stat ask"><b id="c-ask">0</b>held</div>
+    <div class="stat block"><b id="c-block">0</b>blocked</div>
+  </div>
+</header>
+<main>
+  <table>
+    <thead><tr>
+      <th>time</th><th>verdict</th><th>tool</th><th>args</th><th>rule / reason</th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div class="empty" id="empty">waiting for agent actions… run the demo:
+    <code>python demo/demo_agent.py</code></div>
+</main>
+<script>
+const counts = { allow:0, ask:0, block:0 };
+const rows = document.getElementById("rows");
+const empty = document.getElementById("empty");
+
+function esc(s){ return String(s).replace(/[&<>]/g,
+  c => ({ "&":"&amp;","<":"&lt;",">":"&gt;" }[c])); }
+
+function render(e){
+  empty.style.display = "none";
+  if (counts[e.decision] !== undefined){
+    counts[e.decision]++;
+    document.getElementById("c-"+e.decision).textContent = counts[e.decision];
+  }
+  const tr = document.createElement("tr");
+  tr.className = "row";
+  const args = esc(JSON.stringify(e.args));
+  tr.innerHTML =
+    `<td class="mut">${esc(e.iso||"")}</td>` +
+    `<td><span class="tag ${e.decision}">${e.decision}</span></td>` +
+    `<td class="tool">${esc(e.tool)}()</td>` +
+    `<td class="args">${args}</td>` +
+    `<td><div>${esc(e.code||"")} ${esc(e.severity||"")}</div>` +
+    `<div class="reason">${esc(e.reason||"")}</div></td>`;
+  rows.prepend(tr);
+  while (rows.children.length > 200) rows.lastChild.remove();
+}
+
+async function replay(){
+  try {
+    const r = await fetch("/api/events");
+    (await r.json()).forEach(render);
+  } catch (_) {}
+}
+
+function connect(){
+  const ws = new WebSocket("ws://" + location.host + "/ws");
+  const dot = document.getElementById("dot");
+  ws.onopen = () => dot.classList.add("on");
+  ws.onclose = () => { dot.classList.remove("on"); setTimeout(connect, 1500); };
+  ws.onmessage = (m) => render(JSON.parse(m.data));
+}
+
+replay();
+connect();
+</script>
+</body>
+</html>

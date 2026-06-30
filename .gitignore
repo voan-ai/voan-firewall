@@ -1,0 +1,16 @@
+# Secrets — never commit. The OpenAI key for the LLM judge lives here.
+.env
+*.key
+*.pem
+
+# Runtime artifacts
+voan_audit.jsonl
+
+# Python
+__pycache__/
+*.egg-info/
+*.pyc
+.venv/
+
+# Node
+node_modules/
