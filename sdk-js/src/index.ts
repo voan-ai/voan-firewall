@@ -18,5 +18,6 @@ export { Firewall, guard, guardTools } from "./hook.ts";
 export type { FirewallOpts } from "./hook.ts";
 export { LLMJudge, openaiLlm, ollamaLlm } from "./judge.ts";
 export type { LLM, JudgeOpts } from "./judge.ts";
+export { guardAiSdkTools, guardOpenAIDispatch, guardCallables } from "./adapters.ts";
 
 export const VERSION = "0.1.0";

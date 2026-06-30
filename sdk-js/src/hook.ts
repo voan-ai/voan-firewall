@@ -58,6 +58,23 @@ export class Firewall {
     return this.policy.evaluate({ tool, args, agent: this.agent, ts: now() });
   }
 
+  /** Run the full pipeline (rules -> egress -> judge) for an explicit tool call,
+   *  record it, and gate it (throws BlockedAction on block/denied-ask). Used by
+   *  framework adapters that already know the tool name and its args object, so
+   *  the action's args stay clean/named instead of positional. */
+  async guardArgs(tool: string, args: Record<string, unknown>): Promise<void> {
+    const action: Action = { tool, args, agent: this.agent, ts: now() };
+    let verdict = this.egress(action, this.policy.evaluate(action));
+    verdict = await this.judgeStep(action, verdict);
+    this.audit.record(action, verdict);
+    this.gate(action, verdict);
+  }
+
+  /** Feed a tool result into the judge's untrusted-context window. */
+  observe(tool: string, result: unknown): void {
+    this.trace.push(`${tool}: ${asText(result)}`);
+  }
+
   guard<T extends Fn>(fn: T, name?: string): T {
     const tool = name ?? fn.name ?? "tool";
     const self = this;
@@ -71,7 +88,7 @@ export class Firewall {
         self.audit.record(action, verdict);
         self.gate(action, verdict);
         const result = await fn.apply(this, args as never);
-        self.trace.push(`${tool}: ${asText(result)}`);  // feeds the judge's context
+        self.observe(tool, result);  // feeds the judge's context
         return result;
       };
       return wrapped as unknown as T;

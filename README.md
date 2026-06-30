@@ -110,10 +110,13 @@ A TypeScript/JS **port** lives in [`sdk-js/`](sdk-js/) (Node 22.6+, native TS) a
 allowlist (`new Firewall({ egressAllowlist: ["acme.com"] })`), and the LLM
 intent-vs-hijack judge (`new Firewall({ judge: new LLMJudge() }); fw.setGoal(...)`,
 with `openaiLlm()` / `ollamaLlm()` / any `async (system, user) => string` backend).
-It carries the **same real-agent proof** as Python — a genuine OpenAI
-function-calling agent, hijacked by poisoned tool output, blocked by the JS judge
-(0 harmful actions): `node sdk-js/examples/real_agent_attack.ts` (needs
-`OPENAI_API_KEY`). Consumed locally from the repo; not yet published to npm.
+It ships the **same framework adapters** as Python (`guardAiSdkTools` for the
+Vercel AI SDK, `guardOpenAIDispatch`, `guardCallables` — a block returns an
+observation string so the agent defers instead of crashing), and carries the
+**same real-agent proof** — a genuine OpenAI function-calling agent, hijacked by
+poisoned tool output, blocked by the JS judge (0 harmful actions):
+`node sdk-js/examples/real_agent_attack.ts` (needs `OPENAI_API_KEY`). Consumed
+locally from the repo; not yet published to npm.
 
 ## One line to protect an agent
 
