@@ -123,12 +123,15 @@ tools = fw.guard_tools(tools)
 # An agent hijacked into emailing customer data now raises BlockedAction.
 ```
 
-> The judge needs an LLM backend: `OPENAI_API_KEY` in `.env`, **or** a local one
-> via `LLMJudge(llm=ollama_llm())`. With no backend it is a **no-op (fails open)**
-> and emits a warning. The judge sends the action + recent (untrusted) tool
-> context to that backend — secrets and card numbers are auto-redacted first, but
-> for privacy-sensitive/regulated agents use a **local** backend. See
-> [Data handling](#data-handling--threat-model).
+> The judge needs an LLM backend. It is **not OpenAI-only** — pick any:
+> `openai_llm()`, local `ollama_llm()`, `anthropic_llm()` (Claude),
+> `openai_compatible_llm(base_url, model)` for Groq / Together / OpenRouter / vLLM /
+> LM Studio / DeepSeek, or **any** `callable(system, user) -> str`. With no backend
+> the judge is a **no-op (fails open)** and warns. It sends the action + recent
+> (untrusted) tool context to that backend — secrets/card numbers are auto-redacted
+> first, but for privacy-sensitive agents use a **local** backend. See
+> [Data handling](#data-handling--threat-model). (The protected agent itself is
+> framework- and model-agnostic — LangChain, OpenAI, plain functions all work.)
 
 Works on real frameworks too — genuine LangChain tools (with `langchain-core`
 installed) via [`voan/adapters.py`](voan/adapters.py):

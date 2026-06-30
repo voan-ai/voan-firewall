@@ -15,6 +15,7 @@ Quick start:
 See README.md for the dashboard and demo.
 """
 from .audit import AuditLog
+from .backends import anthropic_llm, openai_compatible_llm
 from .hook import Firewall, guard
 from .judge import LLMJudge, ollama_llm, openai_llm
 from .policy import PolicyEngine
@@ -24,7 +25,8 @@ from .schema import Action, BlockedAction, Decision, Session, Verdict
 __version__ = "0.1.0"
 __all__ = [
     "guard", "Firewall", "PolicyEngine", "AuditLog",
-    "LLMJudge", "openai_llm", "ollama_llm",
+    "LLMJudge", "openai_llm", "ollama_llm", "anthropic_llm",
+    "openai_compatible_llm",
     "Rule", "DEFAULT_RULES",
     "Action", "Verdict", "Decision", "Session", "BlockedAction",
 ]
