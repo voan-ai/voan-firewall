@@ -5,6 +5,7 @@
 // nothing is blocked — every decision is still logged.
 import { AuditLog } from "./audit.ts";
 import { PolicyEngine } from "./policy.ts";
+import { egressViolation } from "./rules.ts";
 import { type Action, BlockedAction, type Verdict } from "./schema.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -16,6 +17,7 @@ export interface FirewallOpts {
   agent?: string;
   onAsk?: (action: Action, verdict: Verdict) => boolean;
   mode?: "enforce" | "monitor";
+  egressAllowlist?: string[];
 }
 
 export class Firewall {
@@ -24,6 +26,7 @@ export class Firewall {
   agent: string;
   onAsk?: (action: Action, verdict: Verdict) => boolean;
   mode: "enforce" | "monitor";
+  egressAllowlist?: string[];
 
   constructor(opts: FirewallOpts = {}) {
     this.policy = opts.policy ?? new PolicyEngine();
@@ -31,6 +34,7 @@ export class Firewall {
     this.agent = opts.agent ?? "agent";
     this.onAsk = opts.onAsk;
     this.mode = opts.mode ?? "enforce";
+    this.egressAllowlist = opts.egressAllowlist;
   }
 
   check(tool: string, args: Record<string, unknown>): Verdict {
@@ -42,7 +46,7 @@ export class Firewall {
     const self = this;
     const wrapped = function (this: unknown, ...args: unknown[]) {
       const action: Action = { tool, args: bindArgs(args), agent: self.agent, ts: now() };
-      const verdict = self.policy.evaluate(action);
+      const verdict = self.egress(action, self.policy.evaluate(action));
       self.audit.record(action, verdict);
       self.gate(action, verdict);
       return fn.apply(this, args as never);
@@ -54,6 +58,16 @@ export class Firewall {
     const out: Record<string, Fn> = {};
     for (const [name, fn] of Object.entries(tools)) out[name] = this.guard(fn, name);
     return out as M;
+  }
+
+  private egress(action: Action, verdict: Verdict): Verdict {
+    if (!this.egressAllowlist || verdict.decision === "block") return verdict;
+    const bad = egressViolation(action.args, this.egressAllowlist);
+    if (bad) {
+      return { decision: "block", rule: "egress-allowlist", code: "AEX",
+        severity: "High", reason: `egress to non-allowlisted '${bad}'` };
+    }
+    return verdict;
   }
 
   private gate(action: Action, verdict: Verdict): void {

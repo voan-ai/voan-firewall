@@ -105,10 +105,11 @@ pip install "voan[langchain]"    # + the LangChain adapter demo (langchain-core)
 
 (Clone the repo if you want to run the `demo/` and `eval/` scripts below.)
 
-A TypeScript/JS **port** lives in [`sdk-js/`](sdk-js/) (Node 22.6+, native TS).
-It currently implements the **regex policy tier only** — the LLM judge is
-Python-only for now (JS judge is on the roadmap). Consumed locally from the repo;
-not yet published to npm.
+A TypeScript/JS **port** lives in [`sdk-js/`](sdk-js/) (Node 22.6+, native TS). It
+implements the **deterministic tiers at parity with Python** — the hardened regex
+rules and the egress allowlist (`new Firewall({ egressAllowlist: ["acme.com"] })`).
+The LLM judge is Python-only for now (JS judge is on the roadmap). Consumed locally
+from the repo; not yet published to npm.
 
 ## One line to protect an agent
 
