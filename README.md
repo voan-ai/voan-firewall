@@ -101,6 +101,8 @@ models, and honest limits: [BENCHMARK.md](BENCHMARK.md).
 pip install voan                 # core SDK — zero runtime dependencies
 pip install "voan[dashboard]"    # + live dashboard (fastapi, uvicorn)
 pip install "voan[langchain]"    # + the LangChain adapter demo (langchain-core)
+pip install "voan[mcp]"          # + guard_mcp & the voan-mcp-proxy (mcp)
+pip install "voan[proxy-http]"   # + serve the proxy over HTTP (mcp, uvicorn, starlette)
 ```
 
 (Clone the repo if you want to run the `demo/` and `eval/` scripts below.)
@@ -160,8 +162,11 @@ guard_langchain(my_langchain_tools)
 
 …or guard a real **MCP client session** — Voan's protocol-level sensor checks every
 `call_tool` before the request leaves the client for the server (so it covers MCP
-tools the in-process hook can't):
+tools the in-process hook can't). The MCP pieces need the `mcp` extra:
 
+```bash
+pip install "voan[mcp]"            # guard_mcp + the voan-mcp-proxy stdio/HTTP-upstream proxy
+```
 ```python
 from voan.adapters import guard_mcp
 guard_mcp(mcp_client_session, fw)   # see examples/mcp_demo.py
@@ -173,7 +178,8 @@ server — just point the client's config at it (see `examples/mcp_proxy_demo.py
 ```bash
 voan-mcp-proxy --allow acme.com -- python my_mcp_server.py   # local stdio upstream
 voan-mcp-proxy --allow acme.com --http https://host/mcp      # remote HTTP upstream
-# …or SERVE the proxy itself over HTTP, so a remote client connects to Voan directly:
+# …or SERVE the proxy itself over HTTP, so a remote client connects to Voan directly
+# (this mode needs the proxy-http extra: pip install "voan[proxy-http]"):
 voan-mcp-proxy --allow acme.com --serve-http 127.0.0.1:9000 -- python my_mcp_server.py
 ```
 
