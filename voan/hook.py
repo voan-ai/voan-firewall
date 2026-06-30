@@ -19,13 +19,18 @@ from .schema import Action, BlockedAction, Decision, Session, Verdict
 
 class Firewall:
     def __init__(self, policy=None, audit=None, agent="agent",
-                 on_ask=None, mode="enforce", judge=None, egress_allowlist=None):
+                 on_ask=None, mode="enforce", judge=None, egress_allowlist=None,
+                 judge_fail_closed=False):
         self.policy = policy or PolicyEngine()
         self.audit = audit if audit is not None else AuditLog()
         self.agent = agent
         self.on_ask = on_ask          # callable(action, verdict) -> bool
         self.mode = mode              # "enforce" | "monitor"
         self.judge = judge            # optional LLMJudge — the intent/hijack tier
+        # If the judge backend errors/times out it normally fails OPEN (the rule
+        # verdict stands). Set this to BLOCK instead — don't let a flaky security
+        # tier silently wave actions through.
+        self.judge_fail_closed = judge_fail_closed
         # Opt-in egress allowlist: block any action whose args reference a domain
         # not on this list (catches look-alike destinations the judge can't).
         self.egress_allowlist = egress_allowlist
@@ -81,6 +86,12 @@ class Firewall:
         if self.judge is None or verdict.decision == Decision.BLOCK:
             return verdict
         jv = self.judge.evaluate(self.session.goal, action, self.session.trace)
+        if jv is None and self.judge_fail_closed and self.session.goal \
+                and getattr(self.judge, "available", False):
+            # judge was supposed to run but the backend failed -> don't fail open
+            return Verdict(Decision.BLOCK, rule="judge-fail-closed", code="AID",
+                           severity="High",
+                           reason="judge backend unavailable; failing closed")
         return jv if jv and jv.decision == Decision.BLOCK else verdict
 
     def guard_tools(self, tools):

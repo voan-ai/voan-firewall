@@ -172,7 +172,8 @@ python eval/run_eval.py                # reproduce the eval numbers above
 - **Judge** ([`judge.py`](voan/judge.py)) — LLM "intent vs hijack" tier, **opt-in**,
   that only ever *escalates* to BLOCK. Adds an LLM round-trip (latency + cost) per
   gray-zone action, so it runs off the regex hot path. Pluggable backend
-  (OpenAI / local Ollama / any callable).
+  (OpenAI / local Ollama / any callable). Set `judge_fail_closed=True` so a backend
+  error/timeout **blocks** rather than silently failing open.
 - **Egress allowlist** ([`rules.py`](voan/rules.py)) — opt-in deterministic tier:
   `Firewall(egress_allowlist=["acme.com"])` blocks any action referencing a domain
   **or raw IP** you didn't approve — look-alike exfil destinations and SSRF to

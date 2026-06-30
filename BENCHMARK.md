@@ -113,7 +113,15 @@ guarantee.
   durable value is on (a) cheaper/local models real products run at scale, and
   (b) sophisticated attacks that land even on frontier models, shown above.
 - The judge is itself an LLM and can be wrong or injected; it only ever *escalates*
-  (the deterministic rules are the floor). See [SECURITY.md](SECURITY.md).
+  (the deterministic rules are the floor). If its backend errors/times out it fails
+  OPEN by default — set `Firewall(judge_fail_closed=True)` to block instead. See
+  [SECURITY.md](SECURITY.md).
+- Honest non-fix: we tried extending scope-checking to RECIPIENTS, but the judge
+  over-blocks a legitimate "notify me → user-42" because it can't resolve "me" to a
+  user id. Reliable recipient-scope needs the user's identity passed to the firewall
+  (include it in `set_goal`, e.g. "...I am user-42"), not a judge heuristic — so we
+  did NOT ship a recipient rule. Data-scope ("all_customers" vs one account) is
+  unambiguous and is enforced.
 - We keep hunting for failures, and report the empty hunts too: a probe for harmful
   *state-change* injections (disable 2FA, self-promote to admin, forge an order as
   refunded, wipe the audit log — `benchmark/gap_hunt.py`) found no new gap, because
