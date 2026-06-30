@@ -3,6 +3,7 @@
 Catches known-bad <i>and</i> goal-inconsistent agent actions — RCE, data exfiltration, fraud — <i>before</i> they execute.</p>
 
 <p align="center">
+  <a href="https://pypi.org/project/voan/"><img src="https://img.shields.io/pypi/v/voan" alt="PyPI"></a>
   <a href="https://github.com/voan-ai/voan-firewall/actions/workflows/ci.yml"><img src="https://github.com/voan-ai/voan-firewall/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License">
   <img src="https://img.shields.io/badge/core%20deps-zero-brightgreen" alt="Zero core deps">
@@ -58,14 +59,13 @@ intended behaviour for money and outbound sends.
 
 ## Install
 
-Not yet on PyPI/npm — install from source (it's a single editable install):
-
 ```bash
-git clone https://github.com/voan-ai/voan-firewall && cd voan-firewall
-pip install -e .                 # core SDK — zero runtime dependencies
-pip install -e ".[dashboard]"    # + live dashboard (fastapi, uvicorn)
-pip install -e ".[langchain]"    # + the LangChain adapter demo (langchain-core)
+pip install voan                 # core SDK — zero runtime dependencies
+pip install "voan[dashboard]"    # + live dashboard (fastapi, uvicorn)
+pip install "voan[langchain]"    # + the LangChain adapter demo (langchain-core)
 ```
+
+(Clone the repo if you want to run the `demo/` and `eval/` scripts below.)
 
 A TypeScript/JS **port** lives in [`sdk-js/`](sdk-js/) (Node 22.6+, native TS).
 It currently implements the **regex policy tier only** — the LLM judge is

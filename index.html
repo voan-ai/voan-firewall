@@ -52,10 +52,10 @@
     <p class="sub">AI agents now run shell, move money, touch your database. One
       prompt injection and they act on their own. Voan checks each action and
       blocks the hijacked ones <b>before</b> they execute.</p>
-    <pre class="cmd"><span class="c"># install from source (not yet on PyPI)</span>
-pip install git+https://github.com/voan-ai/voan-firewall
+    <pre class="cmd"><span class="c"># one line to protect any agent</span>
+pip install voan
 <span class="g">import voan</span>
-tools = <span class="g">voan.guard</span>(tools)   <span class="c"># one line: allow / ask / block, inline</span></pre>
+tools = <span class="g">voan.guard</span>(tools)   <span class="c"># allow / ask / block, inline</span></pre>
     <div class="cta">
       <a class="btn p" href="https://github.com/voan-ai/voan-firewall">View on GitHub</a>
       <a class="btn s" href="https://github.com/voan-ai/voan-firewall#see-it-work">Run the demo</a>
