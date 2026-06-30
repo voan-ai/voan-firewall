@@ -118,8 +118,11 @@ guarantee.
   *state-change* injections (disable 2FA, self-promote to admin, forge an order as
   refunded, wipe the audit log — `benchmark/gap_hunt.py`) found no new gap, because
   on the tested models those injections didn't reliably land (the agents declined to
-  execute the embedded ops). The one gap we *did* find — look-alike exfil
-  destinations — is fixed (Test 3).
+  execute the embedded ops). The gaps we *did* find are all fixed: look-alike exfil
+  destinations and encoded-IP SSRF (Test 3 / egress), and the judge's
+  **scope-blindness** — it checked action *type* ("is exporting consistent with the
+  goal?") but not *scope*, so exporting ALL customers when the user asked to export
+  one account slipped through; the judge now also blocks scope escalation.
 
 ## Reproduce
 
