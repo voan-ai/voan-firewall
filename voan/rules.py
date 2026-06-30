@@ -53,8 +53,18 @@ DEFAULT_RULES = [
     Rule("SHELL_DESTRUCTIVE", Decision.BLOCK, "RCE", "Critical",
          "Destructive or self-propagating shell command",
          tools=SHELL,
-         pattern=r"rm\s+-rf|mkfs|dd\s+if=|>\s*/dev/sd|:\(\)\s*\{|format\s+[a-z]:"
-                 r"|del\s+/[sfq]|shutdown|reboot"),
+         pattern=(
+             # rm recursive+force in any flag order/form (-rf, -fr, -rvf, -r -f,
+             # --recursive, --force) — the classic, and its evasions
+             r"\brm\b[^|;&\n]*(?:-r[a-z]*f|-f[a-z]*r|-r\s+-f|-f\s+-r"
+             r"|--recursive|--force)"
+             r"|\bfind\b[^|;&\n]*-delete|\bfind\b[^|;&\n]*-exec\s+rm"
+             r"|\bdd\b[^|;&\n]*of=/dev/|\bmkfs|\bshred\b|\bwipefs\b"
+             r"|>\s*/dev/(?:sd|nvme|hd|disk|mapper)|\bmv\b[^|;&\n]*\s/dev/null"
+             r"|\bchmod\b[^|;&\n]*\b000\b|\btruncate\b[^|;&\n]*-s\s*0\b"
+             r"|:\(\)\s*\{|\bshutdown\b|\breboot\b|del\s+/[sfq]|format\s+[a-z]:"
+             r"|remove-item\b[^|;&\n]*-recurse[^|;&\n]*-force"
+             r"|remove-item\b[^|;&\n]*-force[^|;&\n]*-recurse")),
     Rule("SHELL_PIPE_EXEC", Decision.BLOCK, "RCE", "Critical",
          "Pipe-to-shell remote payload execution",
          tools=SHELL,
