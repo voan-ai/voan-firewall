@@ -173,6 +173,25 @@ guarantee.
   goal?") but not *scope*, so exporting ALL customers when the user asked to export
   one account slipped through; the judge now also blocks scope escalation.
 
+## Bypass audit of the deterministic tiers
+
+We red-teamed the regex/egress tiers with evasion variants (renamed tools,
+flag/whitespace tricks, shell process-substitution, SQL comment injection,
+encoded/look-alike destinations). Findings, all pinned as regression tests in
+[`tests/test_redteam.py`](tests/test_redteam.py):
+
+- **Fixed:** renamed shell/db tools (`powershell`, `spawn`, `subprocess`, …) now
+  in the family sets; process/command substitution `bash <(curl…)` / `$(wget…)`;
+  SQL `DROP/**/TABLE` comment-whitespace; and the `DELETE FROM t -- where` trick
+  that fooled the no-`WHERE` lookahead. Benign `DELETE … WHERE` is not over-blocked.
+- **Honest non-fixes (intentional):** (1) an *arbitrary* tool rename we don't list
+  is by design caught not by signature but by **deny-by-default**
+  (`voan.deny_by_default([...])`) — the regex tier is a default-allow blocklist, not
+  a complete allowlist. (2) A bare 32-bit-decimal IP buried in a **non-destination
+  free-text** field is not flagged, because treating every large integer as an IP
+  would over-block order ids / amounts / timestamps; destination-*named* fields are
+  fail-closed and do catch it. These are the layered-defense seams, stated plainly.
+
 ## Reproduce
 
 ```bash

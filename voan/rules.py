@@ -37,9 +37,16 @@ class Rule:
 
 
 # Tool-name families. Real agents name shell/db/email tools many ways; match
-# broadly so the firewall is not trivially bypassed by renaming a tool.
-SHELL = {"run_command", "shell", "exec", "bash", "sh", "system", "terminal"}
-DB = {"delete_database", "drop_table", "execute_sql", "run_query", "db"}
+# broadly so the firewall is not trivially bypassed by renaming a tool. (The
+# shell/db rules below are all PATTERN-gated, so widening these sets never
+# over-blocks — a tool only matches if its ARGS also match the danger pattern.)
+# An arbitrary rename we don't list here is still covered by deny-by-default
+# presets (voan.deny_by_default([...])); these names just catch the common ones.
+SHELL = {"run_command", "shell", "exec", "bash", "sh", "system", "terminal",
+         "powershell", "pwsh", "cmd", "spawn", "subprocess", "popen",
+         "child_process", "os_system", "shell_exec", "execute_command"}
+DB = {"delete_database", "drop_table", "execute_sql", "run_query", "db",
+      "query", "sql", "run_sql", "execute_query", "cursor"}
 MAIL = {"send_email", "email", "send_message", "send_mail", "notify"}
 HTTP = {"http_request", "fetch", "request", "post", "webhook", "curl"}
 PAY = {"process_refund", "send_payment", "transfer", "charge", "payout"}
@@ -68,13 +75,20 @@ DEFAULT_RULES = [
     Rule("SHELL_PIPE_EXEC", Decision.BLOCK, "RCE", "Critical",
          "Pipe-to-shell remote payload execution",
          tools=SHELL,
+         # pipe-to-shell, plus process/command substitution: bash <(curl..),
+         # $(wget..) — fetch-and-run a remote payload without an explicit pipe.
          pattern=r"curl[^|]*\|\s*(sh|bash)|wget[^|]*\|\s*(sh|bash)"
-                 r"|iex\s*\(|invoke-expression"),
+                 r"|[<$]\(\s*(?:curl|wget)|iex\s*\(|invoke-expression"),
     # --- Critical: destructive data loss ------------------------------------
     Rule("DB_DESTRUCTIVE", Decision.BLOCK, "DEL", "Critical",
          "Destructive database operation",
          tools=DB,
-         pattern=r"drop\s+(table|database)|truncate\s+|delete\s+from(?!.*where)"),
+         # DROP/TRUNCATE (tolerating /* */ comment-whitespace evasions), plus
+         # DELETE FROM with no genuine WHERE — including the "-- where" comment
+         # trick where the only 'where' is inside a comment after the table.
+         pattern=r"drop(?:\s|/\*[^*]*\*/)+(table|database)|truncate(?:\s|/\*[^*]*\*/)+"
+                 r"|delete\s+from(?!.*\bwhere\b)"
+                 r"|delete\s+from\s+[\w\".]+\s*(?:--|/\*|;)"),
     # --- High: data exfiltration to an attacker channel ---------------------
     Rule("EXFIL_CHANNEL", Decision.BLOCK, "AEX", "High",
          "Data sent to an attacker-controlled destination",

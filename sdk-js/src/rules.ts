@@ -24,8 +24,13 @@ export function ruleMatches(rule: Rule, action: Action): boolean {
   return true;
 }
 
-const SHELL = ["run_command", "shell", "exec", "bash", "sh", "system", "terminal"];
-const DB = ["delete_database", "drop_table", "execute_sql", "run_query", "db"];
+// Widened to catch common renamed shell/db tools; the rules are pattern-gated so
+// this never over-blocks (an arbitrary rename is still covered by deny-by-default).
+const SHELL = ["run_command", "shell", "exec", "bash", "sh", "system", "terminal",
+  "powershell", "pwsh", "cmd", "spawn", "subprocess", "popen", "child_process",
+  "os_system", "shell_exec", "execute_command"];
+const DB = ["delete_database", "drop_table", "execute_sql", "run_query", "db",
+  "query", "sql", "run_sql", "execute_query", "cursor"];
 const MAIL = ["send_email", "email", "send_message", "send_mail", "notify"];
 const HTTP = ["http_request", "fetch", "request", "post", "webhook", "curl"];
 const PAY = ["process_refund", "send_payment", "transfer", "charge", "payout"];
@@ -46,13 +51,16 @@ export const DEFAULT_RULES: Rule[] = [
     id: "SHELL_PIPE_EXEC", decision: Decision.BLOCK, code: "RCE",
     severity: "Critical", reason: "Pipe-to-shell remote payload execution",
     tools: SHELL,
-    pattern: /curl[^|]*\|\s*(sh|bash)|wget[^|]*\|\s*(sh|bash)|iex\s*\(|invoke-expression/i,
+    // pipe-to-shell + process/command substitution: bash <(curl..), $(wget..).
+    pattern: /curl[^|]*\|\s*(sh|bash)|wget[^|]*\|\s*(sh|bash)|[<$]\(\s*(?:curl|wget)|iex\s*\(|invoke-expression/i,
   },
   {
     id: "DB_DESTRUCTIVE", decision: Decision.BLOCK, code: "DEL",
     severity: "Critical", reason: "Destructive database operation",
     tools: DB,
-    pattern: /drop\s+(table|database)|truncate\s+|delete\s+from(?!.*where)/i,
+    // DROP/TRUNCATE tolerating /* */ comment-whitespace, plus DELETE FROM with no
+    // genuine WHERE (incl. the "-- where" comment trick after the table name).
+    pattern: /drop(?:\s|\/\*[^*]*\*\/)+(table|database)|truncate(?:\s|\/\*[^*]*\*\/)+|delete\s+from(?!.*\bwhere\b)|delete\s+from\s+[\w".]+\s*(?:--|\/\*|;)/i,
   },
   {
     id: "EXFIL_CHANNEL", decision: Decision.BLOCK, code: "AEX",
