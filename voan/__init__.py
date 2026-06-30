@@ -22,7 +22,7 @@ from .policy import PolicyEngine
 from .rules import DEFAULT_RULES, Rule
 from .schema import Action, BlockedAction, Decision, Session, Verdict
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 __all__ = [
     "guard", "Firewall", "PolicyEngine", "AuditLog",
     "LLMJudge", "openai_llm", "ollama_llm", "anthropic_llm",

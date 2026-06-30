@@ -175,7 +175,8 @@ python eval/run_eval.py                # reproduce the eval numbers above
   (OpenAI / local Ollama / any callable).
 - **Egress allowlist** ([`rules.py`](voan/rules.py)) — opt-in deterministic tier:
   `Firewall(egress_allowlist=["acme.com"])` blocks any action referencing a domain
-  you didn't approve, catching look-alike exfil destinations the judge can't.
+  **or raw IP** you didn't approve — look-alike exfil destinations and SSRF to
+  cloud-metadata / internal IPs the goal-based judge can't tell apart.
 - **Audit + dashboard** — JSONL trail + live WebSocket feed.
 
 ## Data handling & threat model

@@ -90,15 +90,22 @@ DEFAULT_RULES = [
 # allowlist deterministically blocks any egress to a domain you didn't approve,
 # regardless of how plausible the injected destination looks.
 _DOMAIN_RX = re.compile(r"(?:[a-z0-9-]+\.)+[a-z]{2,}", re.I)
+# Raw IPv4 too — else an attacker exfiltrates / SSRFs to a literal IP (cloud
+# metadata 169.254.169.254, an internal 10.x host) and slips past a domain-only check.
+_IP_RX = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 
 
 def egress_violation(args, allowlist):
-    """Return the first destination domain in `args` not covered by `allowlist`
-    (a list of registrable domains like 'acme.com'), or None if all are allowed."""
+    """Return the first destination (domain OR raw IPv4) in `args` not covered by
+    `allowlist` (e.g. ['acme.com', '10.0.0.0/8' is NOT parsed — list exact IPs]),
+    or None if all are allowed. Raw IPs must be allowlisted explicitly."""
     allowed = [a.lower().lstrip(".") for a in allowlist]
     blob = json.dumps(args, ensure_ascii=False).lower()
     for d in _DOMAIN_RX.findall(blob):
         d = d.split("@")[-1].rstrip(".")
         if not any(d == a or d.endswith("." + a) for a in allowed):
             return d
+    for ip in _IP_RX.findall(blob):
+        if ip not in allowed:
+            return ip
     return None
