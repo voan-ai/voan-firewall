@@ -86,6 +86,11 @@ python examples/langchain_real_agent_attack.py   # a real LangChain agent
 python examples/real_agent_attack.py             # a real OpenAI function-calling agent
 ```
 
+Across **6 attack classes** (refund fraud, exfil email, `rm -rf`, secret read +
+exfil, HTTP exfil, direct injection), a real unhardened agent took **8 harmful
+actions**; Voan prevented **8/8 (100%)**. Methodology + honest caveats:
+[BENCHMARK.md](BENCHMARK.md) — reproduce with `python benchmark/run_benchmark.py`.
+
 ## Install
 
 ```bash
