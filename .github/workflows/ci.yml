@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  python-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install SDK
+        run: pip install -e .
+      - name: Import check
+        run: python -c "import voanfw; print('voanfw', voanfw.__version__)"
+      - name: Demo blocks the attacks (no API key needed)
+        run: python demo/demo_agent.py
+
+  js-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: JS demo blocks the attacks
+        run: node sdk-js/demo.ts

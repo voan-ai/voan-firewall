@@ -2,6 +2,12 @@
 <p align="center"><b>The firewall for AI agents.</b><br>
 Blocks unauthorized agent actions — RCE, data exfiltration, fraud — <i>before</i> they execute.</p>
 
+<p align="center">
+  <a href="https://github.com/voan-ai/voan-firewall/actions/workflows/ci.yml"><img src="https://github.com/voan-ai/voan-firewall/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License">
+  <img src="https://img.shields.io/badge/deps-zero-brightgreen" alt="Zero deps">
+</p>
+
 ---
 
 AI agents now take real actions: they run shell commands, move money, touch your
