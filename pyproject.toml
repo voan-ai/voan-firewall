@@ -21,6 +21,8 @@ dependencies = []
 dashboard = ["fastapi>=0.110", "uvicorn>=0.29"]
 # Only needed to run the LangChain adapter demo (demo/langchain_demo.py).
 langchain = ["langchain-core>=0.2"]
+# Only needed to run the real-GPT-agent attack example (examples/real_agent_attack.py).
+examples = ["openai>=1.0"]
 
 [project.urls]
 Homepage = "https://github.com/voan-ai/voan-firewall"
