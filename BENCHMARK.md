@@ -114,6 +114,12 @@ guarantee.
   (b) sophisticated attacks that land even on frontier models, shown above.
 - The judge is itself an LLM and can be wrong or injected; it only ever *escalates*
   (the deterministic rules are the floor). See [SECURITY.md](SECURITY.md).
+- We keep hunting for failures, and report the empty hunts too: a probe for harmful
+  *state-change* injections (disable 2FA, self-promote to admin, forge an order as
+  refunded, wipe the audit log — `benchmark/gap_hunt.py`) found no new gap, because
+  on the tested models those injections didn't reliably land (the agents declined to
+  execute the embedded ops). The one gap we *did* find — look-alike exfil
+  destinations — is fixed (Test 3).
 
 ## Reproduce
 
