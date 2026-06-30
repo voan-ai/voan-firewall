@@ -194,8 +194,11 @@ python eval/run_eval.py                # reproduce the eval numbers above
   wrap — plus **MCP client sessions** via `guard_mcp` (a protocol-level sensor).
 - **Brain** ([`policy.py`](voan/policy.py) + [`rules.py`](voan/rules.py)) — fast
   regex tier; first matching rule wins. It is a **signature blocklist that is
-  default-allow** out of the box (flip to deny-by-default, or rely on the judge,
-  for unrecognized actions). Local and sub-millisecond.
+  default-allow** out of the box. For high-stakes tool families, flip to
+  **deny-by-default** with a preset — `Firewall(policy=deny_by_default(["shell",
+  "db"]))` blocks any *unrecognized* shell/db action while the danger signatures
+  still fire and your own front-loaded allow-rules win (see
+  [`examples/preset_demo.py`](examples/preset_demo.py)). Local and sub-millisecond.
 - **Judge** ([`judge.py`](voan/judge.py)) — LLM "intent vs hijack" tier, **opt-in**,
   that only ever *escalates* to BLOCK. Adds an LLM round-trip (latency + cost) per
   gray-zone action, so it runs off the regex hot path. Pluggable backend
@@ -227,7 +230,6 @@ vulnerability, see [SECURITY.md](SECURITY.md).
 - MCP: `guard_mcp` (client session) and `voan-mcp-proxy` (transparent proxy for both
   local stdio and remote HTTP MCP servers, zero-integration) — including serving the
   proxy itself over HTTP (`--serve-http`, so remote clients connect to Voan directly)
-- Deny-by-default presets for sensitive tool families
 - Hosted policy management + team audit (the commercial open-core layer)
 
 Apache-2.0 · [github.com/voan-ai/voan-firewall](https://github.com/voan-ai/voan-firewall)

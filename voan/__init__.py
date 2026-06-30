@@ -19,6 +19,7 @@ from .backends import anthropic_llm, openai_compatible_llm
 from .hook import Firewall, guard
 from .judge import LLMJudge, ollama_llm, openai_llm
 from .policy import PolicyEngine
+from .presets import FAMILIES, deny_by_default, deny_by_default_rules
 from .rules import DEFAULT_RULES, Rule
 from .schema import Action, BlockedAction, Decision, Session, Verdict
 
@@ -27,6 +28,7 @@ __all__ = [
     "guard", "Firewall", "PolicyEngine", "AuditLog",
     "LLMJudge", "openai_llm", "ollama_llm", "anthropic_llm",
     "openai_compatible_llm",
+    "deny_by_default", "deny_by_default_rules", "FAMILIES",
     "Rule", "DEFAULT_RULES",
     "Action", "Verdict", "Decision", "Session", "BlockedAction",
 ]
