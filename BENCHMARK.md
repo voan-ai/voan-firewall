@@ -79,6 +79,17 @@ The fix shipped *with* the finding: an opt-in deterministic **egress allowlist**
 didn't approve, no matter how plausible the injected destination looks. Found by
 red-teaming our own product, fixed, and verified.
 
+### Injection vector-agnosticism (`tool_poisoning.py`)
+
+Injections don't only hide in tool OUTPUT. A nastier class (MCP / OWASP-Agentic
+*tool poisoning*) hides the directive in a tool's DESCRIPTION — the schema the model
+reads before calling anything. Voan never inspects descriptions; it judges the
+ACTION. So a poisoned `check_order` description that steered a real gpt-4o-mini into
+emailing an attacker (1 harmful action unguarded) was still blocked by Voan (0) — it
+doesn't matter *where* the injection came from, only what the agent tries to DO.
+Coverage caveat: Voan's in-process hook wraps tools you can wrap; MCP tools that run
+over a protocol boundary need the roadmap MCP-proxy sensor.
+
 ## Coverage map (`taxonomy.py`) — which tier defends each attack class
 
 Running each named class's canonical harmful action straight through Voan
