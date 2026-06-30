@@ -13,18 +13,22 @@ import inspect
 
 from .audit import AuditLog
 from .policy import PolicyEngine
+from .rules import egress_violation
 from .schema import Action, BlockedAction, Decision, Session, Verdict
 
 
 class Firewall:
     def __init__(self, policy=None, audit=None, agent="agent",
-                 on_ask=None, mode="enforce", judge=None):
+                 on_ask=None, mode="enforce", judge=None, egress_allowlist=None):
         self.policy = policy or PolicyEngine()
         self.audit = audit if audit is not None else AuditLog()
         self.agent = agent
         self.on_ask = on_ask          # callable(action, verdict) -> bool
         self.mode = mode              # "enforce" | "monitor"
         self.judge = judge            # optional LLMJudge — the intent/hijack tier
+        # Opt-in egress allowlist: block any action whose args reference a domain
+        # not on this list (catches look-alike destinations the judge can't).
+        self.egress_allowlist = egress_allowlist
         self.session = Session()
 
     def set_goal(self, goal):
@@ -48,7 +52,8 @@ class Firewall:
         def wrapped(*args, **kwargs):
             action = Action(tool=tool, args=self._bind(fn, args, kwargs),
                             agent=self.agent)
-            verdict = self._judge(action, self.policy.evaluate(action))
+            verdict = self._egress(action, self.policy.evaluate(action))
+            verdict = self._judge(action, verdict)
             self.audit.record(action, verdict)
             self._gate(action, verdict)
             result = fn(*args, **kwargs)
@@ -57,6 +62,18 @@ class Firewall:
 
         wrapped.__voan_guarded__ = True
         return wrapped
+
+    def _egress(self, action, verdict):
+        """Deterministic destination check: block egress to any domain not on the
+        allowlist (catches look-alike destinations the goal-based judge can't)."""
+        if not self.egress_allowlist or verdict.decision == Decision.BLOCK:
+            return verdict
+        bad = egress_violation(action.args, self.egress_allowlist)
+        if bad:
+            return Verdict(Decision.BLOCK, rule="egress-allowlist", code="AEX",
+                           severity="High",
+                           reason=f"egress to non-allowlisted destination '{bad}'")
+        return verdict
 
     def _judge(self, action, verdict):
         """Second tier: the LLM judge may ESCALATE a rule verdict to BLOCK when an

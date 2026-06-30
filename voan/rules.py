@@ -83,3 +83,22 @@ DEFAULT_RULES = [
          "Outbound message to an external recipient",
          tools=MAIL | HTTP),
 ]
+
+# --- Egress allowlist (deterministic destination check) ---------------------
+# The judge checks "is this action consistent with the goal?" — it CANNOT tell a
+# look-alike destination (acme-order-backups.net) from a real one. So an opt-in
+# allowlist deterministically blocks any egress to a domain you didn't approve,
+# regardless of how plausible the injected destination looks.
+_DOMAIN_RX = re.compile(r"(?:[a-z0-9-]+\.)+[a-z]{2,}", re.I)
+
+
+def egress_violation(args, allowlist):
+    """Return the first destination domain in `args` not covered by `allowlist`
+    (a list of registrable domains like 'acme.com'), or None if all are allowed."""
+    allowed = [a.lower().lstrip(".") for a in allowlist]
+    blob = json.dumps(args, ensure_ascii=False).lower()
+    for d in _DOMAIN_RX.findall(blob):
+        d = d.split("@")[-1].rstrip(".")
+        if not any(d == a or d.endswith("." + a) for a in allowed):
+            return d
+    return None

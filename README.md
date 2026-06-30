@@ -89,8 +89,11 @@ python examples/real_agent_attack.py             # a real OpenAI function-callin
 Even **gpt-5.4-mini** — a frontier model — is reliably hijacked by research-grade
 attacks (encoded payloads, goal-reframing) that the regex tier doesn't catch, and
 Voan's judge catches them on **every run** (0 hijacks survived across 3 runs). Crude
-injections, frontier models resist on their own — we say so. Full method, both
-models tested, and honest limits: [BENCHMARK.md](BENCHMARK.md).
+injections, frontier models resist on their own — we say so. We also **red-teamed
+Voan itself**: found a look-alike-destination exfil that fools the goal-based judge
+(2/4), then shipped the fix — an opt-in egress allowlist,
+`Firewall(egress_allowlist=["acme.com"])` — that closes it (0/4). Full method, both
+models, and honest limits: [BENCHMARK.md](BENCHMARK.md).
 
 ## Install
 
@@ -170,6 +173,9 @@ python eval/run_eval.py                # reproduce the eval numbers above
   that only ever *escalates* to BLOCK. Adds an LLM round-trip (latency + cost) per
   gray-zone action, so it runs off the regex hot path. Pluggable backend
   (OpenAI / local Ollama / any callable).
+- **Egress allowlist** ([`rules.py`](voan/rules.py)) — opt-in deterministic tier:
+  `Firewall(egress_allowlist=["acme.com"])` blocks any action referencing a domain
+  you didn't approve, catching look-alike exfil destinations the judge can't.
 - **Audit + dashboard** — JSONL trail + live WebSocket feed.
 
 ## Data handling & threat model
