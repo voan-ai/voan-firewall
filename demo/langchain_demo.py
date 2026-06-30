@@ -61,13 +61,14 @@ def main():
 
     blocked = 0
     for name, args, label in MODEL_TOOL_CALLS:
-        try:
-            out = by_name[name].invoke(args)       # real LangChain execution
-            print(f"  ✅ ALLOW  {name:<14} {label}  ->  {out}")
-        except voan.BlockedAction as e:
+        out = by_name[name].invoke(args)           # real LangChain execution
+        # The adapter returns the block as a tool observation (not an exception),
+        # so a guarded agent gets it as a normal tool result.
+        if isinstance(out, str) and "Voan blocked" in out:
             blocked += 1
-            print(f"  🛑 BLOCK  {name:<14} {label}  ->  "
-                  f"{e.verdict.code} {e.verdict.severity}: {e.verdict.reason}")
+            print(f"  🛑 BLOCK  {name:<14} {label}  ->  {out[:90]}")
+        else:
+            print(f"  ✅ ALLOW  {name:<14} {label}  ->  {out}")
 
     print(f"\n  {blocked}/{len(MODEL_TOOL_CALLS) - 1} attacks blocked inside "
           f"LangChain's own tool.invoke() path.\n")
