@@ -8,6 +8,34 @@ A real function-calling agent gets a benign, read-only task ("look up X"); a
 **poisoned tool result** then tries to make it take a harmful action. Because the
 task is read-only, any harmful tool the agent runs is hijack-induced.
 
+## At a glance
+
+- A real **frontier** model (gpt-5.4-mini) is reliably hijacked by research-grade
+  attacks the regex tier misses — **Voan's judge catches them every run** (0 survived
+  across 3 runs). Crude injections frontier models resist on their own; we say so.
+- Even a **hardened** prompt (told to ignore injected instructions) let ~2/4 obvious
+  attacks through every run; Voan caught them.
+- We **red-teamed Voan itself** and shipped a fix for every gap we found: look-alike
+  and encoded-IP exfil destinations (egress allowlist — now fail-closed & IP-aware),
+  destructive-command coverage, and the judge's data-scope blindness.
+- Injection **vector-agnostic** (tool output, tool description, or direct message) and
+  **MCP-aware** (`guard_mcp` guards a real MCP client session, `examples/mcp_demo.py`).
+- Honest **non-fixes** are documented too (recipient-scope false positive,
+  encoded-secret defense-in-depth limit) — a benchmark that never finds a failure
+  isn't credible.
+
+Reproduce any of it with `pip install "voan[examples]"`, then:
+
+| script | the question it answers |
+|---|---|
+| `run_benchmark.py` | does Voan beat a one-line prompt hardening? |
+| `strong_attacks.py` | does the judge catch what hijacks a *frontier* model? |
+| `multimodel.py` | does it hold across cheap → frontier models? |
+| `redteam_voan.py`, `redteam_destinations.py` | red-teaming Voan's own judge / egress |
+| `taxonomy.py` | which tier (rules / egress / judge) defends each attack class |
+| `gap_hunt.py` | hunting new gaps (empty hunts reported too) |
+| `tool_poisoning.py` | injection hidden in tool *descriptions* (MCP / OWASP tool poisoning) |
+
 ## Test 1 — prompt hardening (`run_benchmark.py`, gpt-4o-mini, 3 runs)
 
 | condition | unguarded | + Voan |
