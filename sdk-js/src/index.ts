@@ -1,5 +1,5 @@
 // Voan Firewall — runtime guard for AI agents (JS/TS SDK).
-// The Node port of the Python `voanfw` package — regex policy tier only for now
+// The Node port of the Python `voan` package — regex policy tier only for now
 // (the LLM judge is Python-only; JS judge is on the roadmap). Requires Node
 // >=22.6 for native TypeScript. Not yet published to npm — consume it locally:
 //

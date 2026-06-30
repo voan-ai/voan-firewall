@@ -5,11 +5,11 @@ live. It sits inline on every tool call, in the agent's own process, and decides
 allow / ask / block before any side effect happens.
 
 Quick start:
-    import voanfw
+    import voan
 
-    tools = voanfw.guard(tools)          # wrap a dict/list of tool fns
+    tools = voan.guard(tools)          # wrap a dict/list of tool fns
     # ...or a single function / decorator:
-    @voanfw.Firewall().guard
+    @voan.Firewall().guard
     def run_command(command): ...
 
 See README.md for the dashboard and demo.

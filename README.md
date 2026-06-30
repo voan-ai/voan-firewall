@@ -75,9 +75,9 @@ not yet published to npm.
 ## One line to protect an agent
 
 ```python
-import voanfw
+import voan
 
-tools = voanfw.guard(tools)      # wrap your dict/list of tool functions
+tools = voan.guard(tools)      # wrap your dict/list of tool functions
 ```
 
 That one line gives you the **regex tier** (the "silently-allow 30%" column above).
@@ -85,10 +85,10 @@ To get the full intent-vs-hijack coverage, add the judge and tell it the user's
 goal:
 
 ```python
-import voanfw
-from voanfw import LLMJudge, ollama_llm
+import voan
+from voan import LLMJudge, ollama_llm
 
-fw = voanfw.Firewall(judge=LLMJudge())     # needs a backend (see note)
+fw = voan.Firewall(judge=LLMJudge())     # needs a backend (see note)
 fw.set_goal("Check the delivery status of order ORD-1001.")
 tools = fw.guard_tools(tools)
 # An agent hijacked into emailing customer data now raises BlockedAction.
@@ -102,10 +102,10 @@ tools = fw.guard_tools(tools)
 > [Data handling](#data-handling--threat-model).
 
 Works on real frameworks too — genuine LangChain tools (with `langchain-core`
-installed) via [`voanfw/adapters.py`](voanfw/adapters.py):
+installed) via [`voan/adapters.py`](voan/adapters.py):
 
 ```python
-from voanfw.adapters import guard_langchain
+from voan.adapters import guard_langchain
 guard_langchain(my_langchain_tools)
 ```
 
@@ -121,14 +121,14 @@ python eval/run_eval.py                # reproduce the eval numbers above
 
 ## How it works
 
-- **Sensor** ([`hook.py`](voanfw/hook.py)) — in-process wrapper on every tool call.
+- **Sensor** ([`hook.py`](voan/hook.py)) — in-process wrapper on every tool call.
   In-process means it covers Python (and, via the port, JS) agent tools you can
   wrap; protocol-level/MCP coverage is on the roadmap.
-- **Brain** ([`policy.py`](voanfw/policy.py) + [`rules.py`](voanfw/rules.py)) — fast
+- **Brain** ([`policy.py`](voan/policy.py) + [`rules.py`](voan/rules.py)) — fast
   regex tier; first matching rule wins. It is a **signature blocklist that is
   default-allow** out of the box (flip to deny-by-default, or rely on the judge,
   for unrecognized actions). Local and sub-millisecond.
-- **Judge** ([`judge.py`](voanfw/judge.py)) — LLM "intent vs hijack" tier, **opt-in**,
+- **Judge** ([`judge.py`](voan/judge.py)) — LLM "intent vs hijack" tier, **opt-in**,
   that only ever *escalates* to BLOCK. Adds an LLM round-trip (latency + cost) per
   gray-zone action, so it runs off the regex hot path. Pluggable backend
   (OpenAI / local Ollama / any callable).

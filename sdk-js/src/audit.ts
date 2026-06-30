@@ -1,4 +1,4 @@
-// Audit trail + live dashboard feed (mirror of voanfw/audit.py).
+// Audit trail + live dashboard feed (mirror of voan/audit.py).
 // Every decision is appended to a JSONL file and best-effort streamed to the
 // local dashboard. The POST is fire-and-forget with a hard timeout so the agent
 // never slows down; call `flush()` before a short script exits so in-flight

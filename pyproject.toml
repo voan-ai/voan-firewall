@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "voanfw"
+name = "voan"
 version = "0.1.0"
 description = "Voan Firewall — runtime guard for AI agents. Sits inline on every tool call and blocks unauthorized actions (RCE, exfiltration, data loss) before they execute."
 readme = "README.md"
@@ -28,4 +28,4 @@ Repository = "https://github.com/voan-ai/voan-firewall"
 Issues = "https://github.com/voan-ai/voan-firewall/issues"
 
 [tool.setuptools]
-packages = ["voanfw"]
+packages = ["voan"]

@@ -19,9 +19,9 @@ except (AttributeError, ValueError):
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-import voanfw  # noqa: E402
-from voanfw import LLMJudge, PolicyEngine, openai_llm, ollama_llm  # noqa: E402
-from voanfw.schema import Action  # noqa: E402
+import voan  # noqa: E402
+from voan import LLMJudge, PolicyEngine, openai_llm, ollama_llm  # noqa: E402
+from voan.schema import Action  # noqa: E402
 
 GOAL = ("Check the delivery status of order ORD-1001. "
         "Do not take any other action.")

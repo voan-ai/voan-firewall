@@ -106,7 +106,7 @@ def _safe(v):
 
 def guard(target, **kwargs):
     """One-call convenience: wrap a function, dict, or list with a fresh
-    Firewall. `import voanfw; tools = voanfw.guard(tools)` and you're protected.
+    Firewall. `import voan; tools = voan.guard(tools)` and you're protected.
     Pass policy=/on_ask=/mode= to customize."""
     fw = Firewall(**{k: kwargs.pop(k) for k in
                      ("policy", "audit", "agent", "on_ask", "mode", "judge")

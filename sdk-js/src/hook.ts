@@ -1,5 +1,5 @@
 // The in-process hook — the sensor that sits inline on every tool call.
-// Mirror of voanfw/hook.py. `guard()` wraps a tool function; the wrapper runs
+// Mirror of voan/hook.py. `guard()` wraps a tool function; the wrapper runs
 // the policy before the real call: ALLOW -> run, ASK -> onAsk() must approve,
 // BLOCK -> throw BlockedAction so the real tool never runs. In "monitor" mode
 // nothing is blocked — every decision is still logged.

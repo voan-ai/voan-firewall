@@ -16,7 +16,7 @@ jobs:
       - name: Install SDK
         run: pip install -e .
       - name: Import check
-        run: python -c "import voanfw; print('voanfw', voanfw.__version__)"
+        run: python -c "import voan; print('voan', voan.__version__)"
       - name: Demo blocks the attacks (no API key needed)
         run: python demo/demo_agent.py
 

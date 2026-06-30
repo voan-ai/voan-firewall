@@ -1,7 +1,7 @@
 """End-to-end demo: a deliberately naive agent behind the Voan Firewall.
 
 The tools below are real side effects (they print what they *would* do). The
-firewall wraps them with one call — `voanfw.guard(TOOLS)` — and then we replay a
+firewall wraps them with one call — `voan.guard(TOOLS)` — and then we replay a
 mix of benign work and three classic agent exploits straight out of the Voan
 scanner's fixtures:
   1. a normal refund check          -> ALLOW
@@ -26,7 +26,7 @@ except (AttributeError, ValueError):
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-import voanfw  # noqa: E402
+import voan  # noqa: E402
 
 
 # --- the "agent's" tools: naive, no built-in guardrails ---------------------
@@ -79,7 +79,7 @@ def approve(action, verdict):
 
 
 def main():
-    fw = voanfw.Firewall(agent="demo-shop-bot", on_ask=approve)
+    fw = voan.Firewall(agent="demo-shop-bot", on_ask=approve)
     guarded = fw.guard_tools(TOOLS)
 
     print("\n  Voan Firewall — live demo")
@@ -92,7 +92,7 @@ def main():
             allowed += 1
             print(f"  ✅ ALLOW  {tool:<20} {label}")
             print(f"           -> {result}")
-        except voanfw.BlockedAction as e:
+        except voan.BlockedAction as e:
             if e.denied_by_user:
                 held += 1
                 print(f"  ✋ HELD   {tool:<20} {label}")

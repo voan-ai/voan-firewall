@@ -1,4 +1,4 @@
-// The policy engine — the firewall's brain (mirror of voanfw/policy.py).
+// The policy engine — the firewall's brain (mirror of voan/policy.py).
 // First matching rule wins; nothing matches => default-allow. Flip `default` to
 // "block" for a deny-by-default posture.
 import type { Action, DecisionType, Verdict } from "./schema.ts";

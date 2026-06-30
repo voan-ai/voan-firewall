@@ -28,8 +28,8 @@ except (AttributeError, ValueError):
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from voanfw import LLMJudge, PolicyEngine, ollama_llm, openai_llm  # noqa: E402
-from voanfw.schema import Action, Decision  # noqa: E402
+from voan import LLMJudge, PolicyEngine, ollama_llm, openai_llm  # noqa: E402
+from voan.schema import Action, Decision  # noqa: E402
 
 DATA = pathlib.Path(__file__).parent / "traces.jsonl"
 

@@ -18,8 +18,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from langchain_core.tools import tool  # noqa: E402
 
-import voanfw  # noqa: E402
-from voanfw.adapters import guard_langchain  # noqa: E402
+import voan  # noqa: E402
+from voan.adapters import guard_langchain  # noqa: E402
 
 
 @tool
@@ -55,7 +55,7 @@ MODEL_TOOL_CALLS = [
 
 def main():
     print("\n  Voan Firewall × LangChain (real StructuredTools)\n")
-    fw = voanfw.Firewall(agent="langchain-bot")
+    fw = voan.Firewall(agent="langchain-bot")
     guard_langchain(TOOLS, firewall=fw)            # <-- the whole integration
     by_name = {t.name: t for t in TOOLS}
 
@@ -64,7 +64,7 @@ def main():
         try:
             out = by_name[name].invoke(args)       # real LangChain execution
             print(f"  ✅ ALLOW  {name:<14} {label}  ->  {out}")
-        except voanfw.BlockedAction as e:
+        except voan.BlockedAction as e:
             blocked += 1
             print(f"  🛑 BLOCK  {name:<14} {label}  ->  "
                   f"{e.verdict.code} {e.verdict.severity}: {e.verdict.reason}")

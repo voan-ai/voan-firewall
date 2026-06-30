@@ -1,0 +1,29 @@
+name: Publish to PyPI
+
+# Publishes the package to PyPI whenever you cut a GitHub Release.
+# Uses PyPI Trusted Publishing (OIDC) — no API token/secret stored in the repo.
+# One-time setup on PyPI: project "voan" -> Settings -> Publishing -> add a
+# trusted publisher: owner=voan-ai, repo=voan-firewall, workflow=publish.yml,
+# environment=pypi. (Or use "pending publisher" before the first upload.)
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  pypi:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write   # required for trusted publishing
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build sdist + wheel
+        run: |
+          python -m pip install --upgrade build
+          python -m build
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

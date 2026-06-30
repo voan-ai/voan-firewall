@@ -11,6 +11,8 @@ __pycache__/
 *.egg-info/
 *.pyc
 .venv/
+dist/
+build/
 
 # Node
 node_modules/

@@ -1,5 +1,5 @@
 // Default policy rules — the firewall's signatures for agent actions.
-// Mirror of voanfw/rules.py. First matching rule wins (see policy.ts). Category
+// Mirror of voan/rules.py. First matching rule wins (see policy.ts). Category
 // codes match the Voan scanner taxonomy: RCE / DEL / AEX / CRH / AGT.
 import type { Action, DecisionType } from "./schema.ts";
 import { Decision } from "./schema.ts";
