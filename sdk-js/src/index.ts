@@ -1,7 +1,9 @@
 // Voan Firewall — runtime guard for AI agents (JS/TS SDK).
-// The Node twin of the Python `voanfw` package. One line to protect an agent:
+// The Node port of the Python `voanfw` package — regex policy tier only for now
+// (the LLM judge is Python-only; JS judge is on the roadmap). Requires Node
+// >=22.6 for native TypeScript. Not yet published to npm — consume it locally:
 //
-//   import { guardTools } from "voanfw";
+//   import { guardTools } from "./src/index.ts";   // from inside this repo
 //   const tools = guardTools({ runCommand, sendEmail });
 //
 export { Decision, BlockedAction } from "./schema.ts";

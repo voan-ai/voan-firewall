@@ -20,7 +20,8 @@
     "guardrails"
   ],
   "license": "Apache-2.0",
-  "homepage": "https://voan.ai",
+  "private": true,
+  "homepage": "https://github.com/voan-ai/voan-firewall",
   "engines": {
     "node": ">=22.6"
   },

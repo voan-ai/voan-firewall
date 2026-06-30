@@ -50,12 +50,12 @@
     <span class="tag">Runtime guard for AI agents</span>
     <h1>Voan Firewall</h1>
     <p class="sub">AI agents now run shell, move money, touch your database. One
-      prompt injection and they act on their own. Voan blocks the action
-      <b>before</b> it executes.</p>
-    <pre class="cmd"><span class="c"># one line to protect any agent</span>
-pip install voanfw
+      prompt injection and they act on their own. Voan checks each action and
+      blocks the hijacked ones <b>before</b> they execute.</p>
+    <pre class="cmd"><span class="c"># install from source (not yet on PyPI)</span>
+pip install git+https://github.com/voan-ai/voan-firewall
 <span class="g">import voanfw</span>
-tools = <span class="g">voanfw.guard</span>(tools)   <span class="c"># allow / ask / block, inline</span></pre>
+tools = <span class="g">voanfw.guard</span>(tools)   <span class="c"># one line: allow / ask / block, inline</span></pre>
     <div class="cta">
       <a class="btn p" href="https://github.com/voan-ai/voan-firewall">View on GitHub</a>
       <a class="btn s" href="https://github.com/voan-ai/voan-firewall#see-it-work">Run the demo</a>
@@ -63,23 +63,26 @@ tools = <span class="g">voanfw.guard</span>(tools)   <span class="c"># allow / a
   </header>
 
   <section>
-    <h2>Regex rules miss two-thirds of agent attacks.</h2>
+    <h2>Regex rules silently allow 1 in 3 agent attacks.</h2>
     <p class="lead">Pattern rules catch <code>rm -rf</code> and known-bad domains.
       They can't tell if a normal-looking email or data export was hijacked by
       poisoned tool output. Voan adds an LLM judge that checks every action
-      against the user's actual goal.</p>
+      against the user's actual goal — and only ever escalates to block.</p>
     <table>
       <tr><th>36-case eval (gpt-4o-mini judge)</th><th>regex rules only</th><th>+ Voan judge</th></tr>
-      <tr><td>Action-layer attacks caught</td>
-          <td class="big r">35%</td><td class="big g">100%</td></tr>
-      <tr><td>False positives on legit work</td>
+      <tr><td>Attacks silently allowed (no gate)</td>
+          <td class="big r">30%</td><td class="big g">0%</td></tr>
+      <tr><td>Attacks auto-blocked</td>
+          <td>35%</td><td class="big g">100%</td></tr>
+      <tr><td>Benign hard-blocked (false positive)</td>
           <td>6%</td><td>6%</td></tr>
     </table>
-    <p class="note">The judge caught 13 attacks the rules missed (SSRF, indirect
-      injection, salami refunds, cross-tenant reads, privilege escalation). The
-      lone false positive is a legitimate <code>DROP TABLE</code> that strict
-      rules block by design. 36 curated cases — an optimistic ceiling, not a
-      production guarantee; the live-scanner trace loop is the roadmap.</p>
+    <p class="note">Rules also <i>hold</i> another 35% of attacks for a human (ASK
+      on money/external sends); the judge turns the silently-allowed 30% and the
+      held cases into blocks. The one false positive is a legitimate
+      <code>DROP TABLE</code> blocked by design — the judge never loosens a hard
+      block. 36 hand-curated cases, one judge run: an optimistic ceiling, not a
+      production guarantee; a real-trace eval is on the roadmap.</p>
   </section>
 
   <section>
@@ -88,25 +91,28 @@ tools = <span class="g">voanfw.guard</span>(tools)   <span class="c"># allow / a
       judge for the gray zone — the antivirus model, for agents.</p>
     <div class="tiers">
       <div class="tier"><h3>Sensor</h3><p>One-line in-process hook on every tool
-        call. Zero deps, any framework — including real LangChain tools.</p></div>
-      <div class="tier"><h3>Rules</h3><p>Fast regex tier blocks RCE, exfiltration,
-        destructive DB, credential leaks; holds money for a human.</p></div>
-      <div class="tier"><h3>Judge</h3><p>LLM “intent vs. hijack” tier that only
-        ever escalates. Pluggable: OpenAI, local Ollama, anything.</p></div>
+        call. Zero deps; any Python or JS agent whose tools you wrap — LangChain,
+        OpenAI function-calling, plain callables.</p></div>
+      <div class="tier"><h3>Rules</h3><p>Fast local regex tier: blocks RCE,
+        exfiltration, destructive DB, credential leaks; holds money for a human.
+        Signature blocklist, default-allow (opt into deny-by-default).</p></div>
+      <div class="tier"><h3>Judge</h3><p>Opt-in LLM “intent vs. hijack” tier that
+        only ever escalates. Pluggable: local Ollama or OpenAI — sends action +
+        context to the model (secrets auto-redacted; use local for privacy).</p></div>
     </div>
   </section>
 
   <section>
     <h2>Scan, then block.</h2>
-    <p class="lead">Voan Firewall is the runtime half of an agent-security
-      franchise: the <b>scanner</b> finds the holes before you ship; the
-      <b>firewall</b> blocks the exploit as it happens. Open-source, Apache-2.0.</p>
+    <p class="lead">Voan Firewall is a standalone runtime guard. It will pair with
+      the <b>Voan Scanner</b> (companion, private beta) that finds an agent's holes
+      before you ship — together: find, then block. Open-source, Apache-2.0.</p>
     <div class="cta">
       <a class="btn p" href="https://github.com/voan-ai/voan-firewall">Star it on GitHub</a>
     </div>
   </section>
 </div>
-<footer>Apache-2.0 · part of the Voan agent-security franchise ·
-  <a href="https://voan.ai">voan.ai</a></footer>
+<footer>Apache-2.0 ·
+  <a href="https://github.com/voan-ai/voan-firewall">github.com/voan-ai/voan-firewall</a></footer>
 </body>
 </html>
