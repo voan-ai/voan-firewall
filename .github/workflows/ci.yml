@@ -6,26 +6,49 @@ on:
   pull_request:
 
 jobs:
-  python-smoke:
+  # Core test suite across every Python the package claims to support (>=3.9).
+  python-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install SDK + test deps
+        run: pip install -e ".[dev]"
+      - name: Unit tests (no API key needed — judge is stubbed)
+        run: pytest
+      - name: Demo blocks the attacks end-to-end
+        run: python demo/demo_agent.py
+
+  # The MCP adapter test needs the optional `mcp` package (Python >=3.10).
+  python-mcp-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install SDK
-        run: pip install -e .
-      - name: Import check
-        run: python -c "import voan; print('voan', voan.__version__)"
-      - name: Demo blocks the attacks (no API key needed)
-        run: python demo/demo_agent.py
+      - name: Install SDK + test + mcp
+        run: pip install -e ".[dev,mcp]"
+      - name: Unit tests (includes guard_mcp)
+        run: pytest
 
-  js-smoke:
+  js-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
+      - name: JS parity, judge, and adapter suites
+        run: |
+          node sdk-js/verify.ts
+          node sdk-js/judge_verify.ts
+          node sdk-js/adapters_verify.ts
       - name: JS demo blocks the attacks
         run: node sdk-js/demo.ts

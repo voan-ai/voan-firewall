@@ -27,6 +27,8 @@ examples = ["openai>=1.0", "mcp>=1.0"]
 mcp = ["mcp>=1.0"]
 # Only needed to SERVE the transparent proxy over HTTP (voan-mcp-proxy --serve-http).
 proxy-http = ["mcp>=1.0", "uvicorn>=0.29", "starlette>=0.37"]
+# Test suite (pytest). `pip install -e ".[dev,mcp]"` then `pytest`.
+dev = ["pytest>=7"]
 
 [project.urls]
 Homepage = "https://github.com/voan-ai/voan-firewall"
@@ -39,3 +41,7 @@ voan-mcp-proxy = "voan.mcp_proxy:main"
 
 [tool.setuptools]
 packages = ["voan"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
