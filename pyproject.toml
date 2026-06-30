@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "voan"
-version = "0.1.10"
+version = "0.1.11"
 description = "Voan Firewall — runtime guard for AI agents. Sits inline on every tool call and blocks unauthorized actions (RCE, exfiltration, data loss) before they execute."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -25,6 +25,8 @@ langchain = ["langchain-core>=0.2"]
 examples = ["openai>=1.0", "mcp>=1.0"]
 # Only needed to guard MCP client sessions (voan.adapters.guard_mcp).
 mcp = ["mcp>=1.0"]
+# Only needed to SERVE the transparent proxy over HTTP (voan-mcp-proxy --serve-http).
+proxy-http = ["mcp>=1.0", "uvicorn>=0.29", "starlette>=0.37"]
 
 [project.urls]
 Homepage = "https://github.com/voan-ai/voan-firewall"

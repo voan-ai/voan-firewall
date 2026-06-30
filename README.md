@@ -171,8 +171,10 @@ guard_mcp(mcp_client_session, fw)   # see examples/mcp_demo.py
 server — just point the client's config at it (see `examples/mcp_proxy_demo.py`):
 
 ```bash
-voan-mcp-proxy --allow acme.com -- python my_mcp_server.py   # local stdio server
-voan-mcp-proxy --allow acme.com --http https://host/mcp      # remote HTTP server
+voan-mcp-proxy --allow acme.com -- python my_mcp_server.py   # local stdio upstream
+voan-mcp-proxy --allow acme.com --http https://host/mcp      # remote HTTP upstream
+# …or SERVE the proxy itself over HTTP, so a remote client connects to Voan directly:
+voan-mcp-proxy --allow acme.com --serve-http 127.0.0.1:9000 -- python my_mcp_server.py
 ```
 
 ## See it work
@@ -223,8 +225,8 @@ vulnerability, see [SECURITY.md](SECURITY.md).
 - Real-trace eval harness (the production FP/FN number)
 - npm publish for the JS SDK (now at full three-tier parity with Python, repo-local)
 - MCP: `guard_mcp` (client session) and `voan-mcp-proxy` (transparent proxy for both
-  local stdio and remote HTTP MCP servers, zero-integration) ship today; serving the
-  proxy itself over HTTP/SSE is next
+  local stdio and remote HTTP MCP servers, zero-integration) — including serving the
+  proxy itself over HTTP (`--serve-http`, so remote clients connect to Voan directly)
 - Deny-by-default presets for sensitive tool families
 - Hosted policy management + team audit (the commercial open-core layer)
 
