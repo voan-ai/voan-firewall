@@ -90,21 +90,54 @@ DEFAULT_RULES = [
 # allowlist deterministically blocks any egress to a domain you didn't approve,
 # regardless of how plausible the injected destination looks.
 _DOMAIN_RX = re.compile(r"(?:[a-z0-9-]+\.)+[a-z]{2,}", re.I)
-# Raw IPv4 too — else an attacker exfiltrates / SSRFs to a literal IP (cloud
-# metadata 169.254.169.254, an internal 10.x host) and slips past a domain-only check.
 _IP_RX = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+# Arg fields that name a network destination — checked FAIL-CLOSED (their host must
+# resolve to an allowlisted domain, which defeats encoded-IP SSRF evasions).
+_DEST_KEYS = ("dest", "url", "uri", "to", "endpoint", "host", "target",
+              "recipient", "webhook", "callback", "address", "server")
+
+
+def _pairs(obj, key=""):
+    """Walk nested dict/list args, yielding (key, scalar) pairs."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            yield from _pairs(v, str(k))
+    elif isinstance(obj, (list, tuple)):
+        for v in obj:
+            yield from _pairs(v, key)
+    else:
+        yield key, obj
+
+
+def _host(v):
+    v = str(v).strip().lower()
+    v = re.sub(r"^[a-z][a-z0-9+.-]*://", "", v)        # strip scheme
+    v = v.split("/")[0].split("?")[0].split("@")[-1]   # strip path/query/userinfo
+    if v.startswith("["):                               # ipv6 literal
+        return v[1:].split("]")[0]
+    return v.split(":")[0]                               # strip port
+
+
+def _allowed_host(host, allowed):
+    host = host.rstrip(".")
+    return bool(host) and any(host == a or host.endswith("." + a) for a in allowed)
 
 
 def egress_violation(args, allowlist):
-    """Return the first destination (domain OR raw IPv4) in `args` not covered by
-    `allowlist` (e.g. ['acme.com', '10.0.0.0/8' is NOT parsed — list exact IPs]),
-    or None if all are allowed. Raw IPs must be allowlisted explicitly."""
+    """Return the first destination in `args` not covered by `allowlist` (exact
+    domains like 'acme.com', or exact IPs), else None. Destination-named fields are
+    fail-CLOSED: their host must resolve to an allowlisted domain/IP — which also
+    blocks encoded-IP SSRF evasions (decimal/hex/octal/IPv6) and look-alikes."""
     allowed = [a.lower().lstrip(".") for a in allowlist]
+    for k, v in _pairs(args):
+        if any(dk in k.lower() for dk in _DEST_KEYS):
+            host = _host(v)
+            if host and not _allowed_host(host, allowed):
+                return host
     blob = json.dumps(args, ensure_ascii=False).lower()
     for d in _DOMAIN_RX.findall(blob):
-        d = d.split("@")[-1].rstrip(".")
-        if not any(d == a or d.endswith("." + a) for a in allowed):
-            return d
+        if not _allowed_host(d.split("@")[-1], allowed):
+            return d.split("@")[-1].rstrip(".")
     for ip in _IP_RX.findall(blob):
         if ip not in allowed:
             return ip
