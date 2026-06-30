@@ -105,11 +105,12 @@ pip install "voan[langchain]"    # + the LangChain adapter demo (langchain-core)
 
 (Clone the repo if you want to run the `demo/` and `eval/` scripts below.)
 
-A TypeScript/JS **port** lives in [`sdk-js/`](sdk-js/) (Node 22.6+, native TS). It
-implements the **deterministic tiers at parity with Python** — the hardened regex
-rules and the egress allowlist (`new Firewall({ egressAllowlist: ["acme.com"] })`).
-The LLM judge is Python-only for now (JS judge is on the roadmap). Consumed locally
-from the repo; not yet published to npm.
+A TypeScript/JS **port** lives in [`sdk-js/`](sdk-js/) (Node 22.6+, native TS) at
+**full three-tier parity with Python** — the hardened regex rules, the egress
+allowlist (`new Firewall({ egressAllowlist: ["acme.com"] })`), and the LLM
+intent-vs-hijack judge (`new Firewall({ judge: new LLMJudge() }); fw.setGoal(...)`,
+with `openaiLlm()` / `ollamaLlm()` / any `async (system, user) => string` backend).
+Consumed locally from the repo; not yet published to npm.
 
 ## One line to protect an agent
 
@@ -214,7 +215,7 @@ vulnerability, see [SECURITY.md](SECURITY.md).
 ## Roadmap
 
 - Real-trace eval harness (the production FP/FN number)
-- LLM judge parity in the JS port
+- npm publish for the JS SDK (now at full three-tier parity with Python, repo-local)
 - MCP: `guard_mcp` (client session) and `voan-mcp-proxy` (transparent proxy for both
   local stdio and remote HTTP MCP servers, zero-integration) ship today; serving the
   proxy itself over HTTP/SSE is next

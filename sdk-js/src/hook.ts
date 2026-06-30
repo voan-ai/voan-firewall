@@ -4,9 +4,10 @@
 // BLOCK -> throw BlockedAction so the real tool never runs. In "monitor" mode
 // nothing is blocked — every decision is still logged.
 import { AuditLog } from "./audit.ts";
+import type { LLMJudge } from "./judge.ts";
 import { PolicyEngine } from "./policy.ts";
 import { egressViolation } from "./rules.ts";
-import { type Action, BlockedAction, type Verdict } from "./schema.ts";
+import { type Action, BlockedAction, Decision, type Verdict } from "./schema.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Fn = (...args: any[]) => any;
@@ -18,6 +19,8 @@ export interface FirewallOpts {
   onAsk?: (action: Action, verdict: Verdict) => boolean;
   mode?: "enforce" | "monitor";
   egressAllowlist?: string[];
+  judge?: LLMJudge;
+  judgeFailClosed?: boolean;
 }
 
 export class Firewall {
@@ -27,6 +30,10 @@ export class Firewall {
   onAsk?: (action: Action, verdict: Verdict) => boolean;
   mode: "enforce" | "monitor";
   egressAllowlist?: string[];
+  judge?: LLMJudge;
+  judgeFailClosed: boolean;
+  goal?: string;
+  private trace: string[] = [];
 
   constructor(opts: FirewallOpts = {}) {
     this.policy = opts.policy ?? new PolicyEngine();
@@ -35,6 +42,16 @@ export class Firewall {
     this.onAsk = opts.onAsk;
     this.mode = opts.mode ?? "enforce";
     this.egressAllowlist = opts.egressAllowlist;
+    this.judge = opts.judge;
+    this.judgeFailClosed = opts.judgeFailClosed ?? false;
+  }
+
+  /** Tell the firewall what the user actually asked for, so the LLM judge can
+   *  spot actions that drift from it (hijacks). Resets the trace. */
+  setGoal(goal: string): this {
+    this.goal = goal;
+    this.trace = [];
+    return this;
   }
 
   check(tool: string, args: Record<string, unknown>): Verdict {
@@ -44,6 +61,21 @@ export class Firewall {
   guard<T extends Fn>(fn: T, name?: string): T {
     const tool = name ?? fn.name ?? "tool";
     const self = this;
+    // With a judge configured the wrapper is async (the LLM call is awaited);
+    // without one it stays sync so existing rule-only usage is unchanged.
+    if (this.judge) {
+      const wrapped = async function (this: unknown, ...args: unknown[]) {
+        const action: Action = { tool, args: bindArgs(args), agent: self.agent, ts: now() };
+        let verdict = self.egress(action, self.policy.evaluate(action));
+        verdict = await self.judgeStep(action, verdict);
+        self.audit.record(action, verdict);
+        self.gate(action, verdict);
+        const result = await fn.apply(this, args as never);
+        self.trace.push(`${tool}: ${asText(result)}`);  // feeds the judge's context
+        return result;
+      };
+      return wrapped as unknown as T;
+    }
     const wrapped = function (this: unknown, ...args: unknown[]) {
       const action: Action = { tool, args: bindArgs(args), agent: self.agent, ts: now() };
       const verdict = self.egress(action, self.policy.evaluate(action));
@@ -70,6 +102,19 @@ export class Firewall {
     return verdict;
   }
 
+  // Second tier: the LLM judge may ESCALATE a rule verdict to BLOCK when an
+  // action drifts from the user's goal, but never loosens it.
+  private async judgeStep(action: Action, verdict: Verdict): Promise<Verdict> {
+    if (!this.judge || verdict.decision === Decision.BLOCK) return verdict;
+    const jv = await this.judge.evaluate(this.goal, action, this.trace);
+    if (jv === null && this.judgeFailClosed && this.goal && this.judge.available) {
+      // judge was supposed to run but the backend failed -> don't fail open
+      return { decision: Decision.BLOCK, rule: "judge-fail-closed", code: "AID",
+        severity: "High", reason: "judge backend unavailable; failing closed" };
+    }
+    return jv && jv.decision === Decision.BLOCK ? jv : verdict;
+  }
+
   private gate(action: Action, verdict: Verdict): void {
     if (this.mode === "monitor") return;
     if (verdict.decision === "block") throw new BlockedAction(action, verdict);
@@ -93,6 +138,12 @@ function bindArgs(args: unknown[]): Record<string, unknown> {
 
 function isPlainObject(v: unknown): boolean {
   return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+// Compact a tool result into trace text for the judge's untrusted-context window.
+function asText(v: unknown): string {
+  const s = typeof v === "string" ? v : JSON.stringify(v);
+  return (s ?? "").slice(0, 500);
 }
 
 export function guard<T extends Fn>(fn: T, opts?: FirewallOpts): T {
