@@ -1,83 +1,88 @@
-"""Transparent MCP firewall proxy (stdio) — zero integration.
+"""Transparent MCP firewall proxy — zero integration, any upstream transport.
 
-Point your MCP client at `voan-mcp-proxy --allow acme.com -- <server command>`
-instead of the server itself. The proxy spawns the real server and relays the
-newline-delimited JSON-RPC both ways, but every `tools/call` is first checked by
-Voan's DETERMINISTIC tiers (regex rules + egress allowlist). A blocked call gets an
-error result and never reaches the server — no code change in the client or server.
+Drop it between your MCP client and server. The client spawns this proxy (stdio);
+the proxy connects UPSTREAM to the real server — a local stdio command OR a remote
+streamable-HTTP MCP server — and relays everything, but runs Voan's deterministic
+tiers (rules + egress allowlist) on every tools/call. Blocked calls return an error
+and never reach the server. No code change in the client or server.
+
+    voan-mcp-proxy --allow acme.com -- python my_server.py        # stdio upstream
+    voan-mcp-proxy --allow acme.com --http https://host/mcp       # remote HTTP upstream
 
 (The LLM judge needs the user's goal, which a transparent proxy doesn't see, so it
-stays in the in-process / `guard_mcp` path. This proxy gives integration-free
-rules+egress: destructive commands and exfil to unapproved destinations.)
-
-    voan-mcp-proxy --allow acme.com -- python my_mcp_server.py
+stays in the in-process / guard_mcp path; this gives integration-free rules+egress.)
 """
-import json
-import subprocess
 import sys
-import threading
 
 from .policy import PolicyEngine
 from .rules import egress_violation
 from .schema import Action, Decision
 
 
-def _block_result(rid, reason):
-    return json.dumps({"jsonrpc": "2.0", "id": rid, "result": {
-        "content": [{"type": "text", "text": f"\U0001f6d1 Voan blocked: {reason}"}],
-        "isError": True}})
-
-
-def run_proxy(server_cmd, allowlist):
+async def _serve(upstream, allowlist):
+    from mcp.server.lowlevel import Server
+    from mcp.server.stdio import stdio_server
     policy = PolicyEngine()
-    proc = subprocess.Popen(server_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                            stderr=sys.stderr, bufsize=1, text=True)
-    lock = threading.Lock()
+    proxy = Server("voan-mcp-firewall")
 
-    def to_client(line):
-        with lock:
-            sys.stdout.write(line if line.endswith("\n") else line + "\n")
-            sys.stdout.flush()
+    @proxy.list_tools()
+    async def _list():
+        tools = (await upstream.list_tools()).tools
+        for t in tools:                 # we forward the upstream result verbatim, so
+            t.outputSchema = None        # don't re-validate structured output here
+        return tools
 
-    def pump_server():
-        for line in proc.stdout:
-            to_client(line)
-    threading.Thread(target=pump_server, daemon=True).start()
+    @proxy.call_tool()
+    async def _call(name, arguments):
+        action = Action(tool=name, args=arguments or {}, agent="mcp-proxy")
+        verdict = policy.evaluate(action)
+        bad = egress_violation(action.args, allowlist) if allowlist else None
+        if verdict.decision == Decision.BLOCK or bad:
+            reason = f"egress to non-allowlisted '{bad}'" if bad else verdict.reason
+            sys.stderr.write(f"[voan] blocked {name}: {reason}\n")
+            raise ValueError(f"\U0001f6d1 Voan blocked {name}(): {reason}")
+        return (await upstream.call_tool(name, arguments)).content
 
-    for line in sys.stdin:
-        if not line.strip():
-            continue
-        try:
-            msg = json.loads(line)
-        except (ValueError, TypeError):
-            proc.stdin.write(line); proc.stdin.flush(); continue
-        if msg.get("method") == "tools/call":
-            params = msg.get("params") or {}
-            action = Action(tool=params.get("name", ""),
-                            args=params.get("arguments") or {}, agent="mcp-proxy")
-            verdict = policy.evaluate(action)
-            bad = egress_violation(action.args, allowlist) if allowlist else None
-            if verdict.decision == Decision.BLOCK or bad:
-                reason = f"egress to non-allowlisted '{bad}'" if bad else verdict.reason
-                sys.stderr.write(f"[voan] blocked {action.tool}: {reason}\n")
-                to_client(_block_result(msg.get("id"), reason))
-                continue
-        proc.stdin.write(line); proc.stdin.flush()
-    proc.terminate()
+    async with stdio_server() as (r, w):
+        await proxy.run(r, w, proxy.create_initialization_options())
+
+
+async def _amain(upstream_kind, target, allowlist):
+    from mcp import ClientSession
+    if upstream_kind == "http":
+        from mcp.client.streamable_http import streamablehttp_client
+        async with streamablehttp_client(target) as (r, w, _):
+            async with ClientSession(r, w) as up:
+                await up.initialize()
+                await _serve(up, allowlist)
+    else:
+        from mcp.client.stdio import StdioServerParameters, stdio_client
+        params = StdioServerParameters(command=target[0], args=target[1:])
+        async with stdio_client(params) as (r, w):
+            async with ClientSession(r, w) as up:
+                await up.initialize()
+                await _serve(up, allowlist)
 
 
 def main():
+    import anyio
     args = sys.argv[1:]
     allow = []
     while len(args) >= 2 and args[0] == "--allow":
         allow.append(args[1]); args = args[2:]
+    if args and args[0] == "--http":
+        if len(args) < 2:
+            sys.stderr.write("usage: voan-mcp-proxy [--allow D]... --http <url>\n")
+            sys.exit(2)
+        anyio.run(_amain, "http", args[1], allow)
+        return
     if args and args[0] == "--":
         args = args[1:]
     if not args:
-        sys.stderr.write("usage: voan-mcp-proxy [--allow DOMAIN]... -- "
-                         "<server command...>\n")
+        sys.stderr.write("usage: voan-mcp-proxy [--allow DOMAIN]... "
+                         "(-- <server cmd...> | --http <url>)\n")
         sys.exit(2)
-    run_proxy(args, allow)
+    anyio.run(_amain, "stdio", args, allow)
 
 
 if __name__ == "__main__":
