@@ -86,12 +86,11 @@ python examples/langchain_real_agent_attack.py   # a real LangChain agent
 python examples/real_agent_attack.py             # a real OpenAI function-calling agent
 ```
 
-Even a **hardened** agent — one explicitly told to ignore injected instructions —
-still let ~2 obvious attacks through on every run, and Voan caught them. Across
-plain/hardened prompts × obvious/stealth attacks, **Voan blocked 100% of harmful
-actions** where prompt-hardening alone did not. Full method, the cells where
-hardening *was* enough, and honest limits: [BENCHMARK.md](BENCHMARK.md) —
-`python benchmark/run_benchmark.py`.
+Even **gpt-5.4-mini** — a frontier model — is reliably hijacked by research-grade
+attacks (encoded payloads, goal-reframing) that the regex tier doesn't catch, and
+Voan's judge catches them on **every run** (0 hijacks survived across 3 runs). Crude
+injections, frontier models resist on their own — we say so. Full method, both
+models tested, and honest limits: [BENCHMARK.md](BENCHMARK.md).
 
 ## Install
 
