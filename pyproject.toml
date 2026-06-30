@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "voan"
-version = "0.1.8"
+version = "0.1.9"
 description = "Voan Firewall — runtime guard for AI agents. Sits inline on every tool call and blocks unauthorized actions (RCE, exfiltration, data loss) before they execute."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -30,6 +30,10 @@ mcp = ["mcp>=1.0"]
 Homepage = "https://github.com/voan-ai/voan-firewall"
 Repository = "https://github.com/voan-ai/voan-firewall"
 Issues = "https://github.com/voan-ai/voan-firewall/issues"
+
+[project.scripts]
+# Transparent MCP firewall proxy: voan-mcp-proxy --allow acme.com -- <server cmd>
+voan-mcp-proxy = "voan.mcp_proxy:main"
 
 [tool.setuptools]
 packages = ["voan"]

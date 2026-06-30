@@ -116,8 +116,9 @@ ACTION. So a poisoned `check_order` description that steered a real gpt-4o-mini 
 emailing an attacker (1 harmful action unguarded) was still blocked by Voan (0) — it
 doesn't matter *where* the injection came from, only what the agent tries to DO.
 Coverage caveat: Voan's in-process hook wraps tools you can wrap; MCP tools over a
-protocol boundary are covered by `guard_mcp` (a client-session sensor — see
-`examples/mcp_demo.py`); a transparent stdio/HTTP proxy is next.
+protocol boundary are covered two ways: `guard_mcp` (a client-session sensor) and the
+transparent `voan-mcp-proxy` (zero integration — `examples/mcp_proxy_demo.py`); an
+HTTP/SSE proxy is next.
 
 ## Coverage map (`taxonomy.py`) — which tier defends each attack class
 

@@ -159,6 +159,13 @@ from voan.adapters import guard_mcp
 guard_mcp(mcp_client_session, fw)   # see examples/mcp_demo.py
 ```
 
+…or, for **zero code change**, run the transparent proxy between any MCP client and
+server — just point the client's config at it (see `examples/mcp_proxy_demo.py`):
+
+```bash
+voan-mcp-proxy --allow acme.com -- python my_mcp_server.py
+```
+
 ## See it work
 
 ```bash
@@ -206,8 +213,8 @@ vulnerability, see [SECURITY.md](SECURITY.md).
 
 - Real-trace eval harness (the production FP/FN number)
 - LLM judge parity in the JS port
-- MCP: `guard_mcp` guards a client session today; a transparent stdio/HTTP proxy
-  (zero-integration, framework-agnostic) is next
+- MCP: `guard_mcp` (client session) and `voan-mcp-proxy` (transparent stdio proxy,
+  zero-integration) ship today; an HTTP/SSE proxy is next
 - Deny-by-default presets for sensitive tool families
 - Hosted policy management + team audit (the commercial open-core layer)
 
