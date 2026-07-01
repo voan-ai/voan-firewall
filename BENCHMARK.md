@@ -321,6 +321,18 @@ target; closing those needs full provenance/taint (CaMeL), the next architectura
 
 Reproduce: `python eval/agentdojo_plan_eval.py`.
 
+**Zero-effort plans.** Writing a plan by hand is friction, so `derive_plan(goal,
+tools, llm)` ([`voan/planner.py`](voan/planner.py)) asks an LLM to produce it from
+the goal + tool list *before* any untrusted data is read. Measured on AgentDojo:
+auto-plan **alone** is 89% recall / **44% FP** — the planner can't predict every
+intermediate read a task needs, so legit steps fall off-plan. Paired with the judge
+backstop (`Firewall(judge=…).set_goal(g).set_plan(derive_plan(…))`), off-plan legit
+reads are allowed and off-plan attacks blocked: **89% recall / 8% FP**, no manual
+planning. Honest trade: recall (89%) sits below the judge alone (99%) because a
+*permissive* auto-plan can pre-authorize an attack that reuses a planned tool — so
+auto-plan is a convenience layer; a hand-pinned plan (94%/2%) is stronger where it
+matters.
+
 ## Performance ([`benchmark/perf.py`](benchmark/perf.py))
 
 The deterministic tiers run inline on every tool call, so their cost matters.
