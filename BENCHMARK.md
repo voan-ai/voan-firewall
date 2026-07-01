@@ -360,6 +360,32 @@ its verdict is ASK (data-derived sends are hold-for-human, the correct posture),
 not a hard block. Full per-value provenance (CaMeL) needs a capability interpreter
 around the agent — beyond a drop-in SDK; this is the pragmatic string-level version.
 
+### Adaptive-attack evaluation (the 2026 standard) ([`benchmark/adaptive_attack.py`](benchmark/adaptive_attack.py))
+
+The 2026 field moved the goalposts. *The Attacker Moves Second* (ICLR 2026; OpenAI /
+Anthropic / DeepMind) shows that evaluating a defense against a **static** attack set
+is meaningless — an attacker who **adapts** to the defense (gradient / RL / search)
+bypasses 12 published defenses at **>90%**. Static recall numbers (ours included) are
+a ceiling, not a guarantee.
+
+So we pit an LLM red-teamer against Voan's own judge: it iteratively rewrites a
+poisoned tool output, using the judge's refusal as feedback, to make the judge
+approve a blatantly off-goal transfer. In our run a **query-based rephrase attack (6
+rounds) did not break the judge (0/5)** — Voan's judge scores action-vs-goal and is
+told to ignore the trace, so trace-injection alone struggles when the action is
+obviously off-goal. **Do not over-read this**: it is a *weak* adaptive attack.
+Gradient attacks (GCG) need white-box access an API judge doesn't give; stronger
+query search and in-domain reframing may still break it. Per the 2026 result,
+judge-class defenses **are** breakable — this is a lower bound, not a pass.
+
+The point the harness makes: the **deterministic** tiers gate the same action no
+matter how the injection is phrased — target-grounding (recipient not in the goal),
+taint (target came from tool data), and Rule of Two (capability count) have **no
+prompt to attack**. That prompt-independence is why the 2026 consensus leads with
+deterministic, model-external enforcement and treats the LLM judge as a soft
+backstop. Voan is built that way: rules / egress / plan / taint / Rule of Two are
+deterministic; the judge is one opt-in tier, not the foundation.
+
 ## Performance ([`benchmark/perf.py`](benchmark/perf.py))
 
 The deterministic tiers run inline on every tool call, so their cost matters.
