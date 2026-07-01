@@ -16,3 +16,6 @@ build/
 
 # Node
 node_modules/
+
+# InjecAgent real-trace eval cache (third-party data, fetched on run)
+eval/.injecagent_cache/

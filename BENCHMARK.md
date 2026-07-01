@@ -192,6 +192,41 @@ encoded/look-alike destinations). Findings, all pinned as regression tests in
   would over-block order ids / amounts / timestamps; destination-*named* fields are
   fail-closed and do catch it. These are the layered-defense seams, stated plainly.
 
+## Real third-party traces — InjecAgent ([`eval/injecagent_eval.py`](eval/injecagent_eval.py))
+
+The eval above uses our own curated cases. This one runs Voan over an **independent
+benchmark we did not build**: [InjecAgent](https://github.com/uiuc-kang-lab/InjecAgent)
+(indirect prompt injection, Zhan et al. 2024) — 1,054 real agent scenarios where a
+tool response is poisoned to induce a harmful tool call, across domains we never
+configured for (smart locks, Venmo, Gmail, health, banking…). We replay the induced
+call through Voan and ask: does it gate the call, given the user's actual goal?
+
+| tier | attack recall (gated) | benign FP |
+|---|:--:|:--:|
+| rules-only (regex tier) | **0%** (0/1054) | 0% (0/17) |
+| **rules + judge** (gpt-4o-mini) | **100%** (1054/1054) | 6% (1/17) |
+
+Read this honestly:
+
+- **Rules-only catches 0%** — InjecAgent's tools are domain-specific
+  (`VenmoSendMoney`, `AugustSmartLockGrantGuestAccess`), not Voan's generic
+  families. On an unconfigured real agent the regex tier is near-useless; **the
+  judge is the entire defense.** (Configure rules for your agent's tools, or use
+  deny-by-default, to get a deterministic floor.)
+- **100% judge recall is real but not magic.** We verified it survives the *hardest*
+  input — goal vs. tool-name only, with the args and the poisoned trace both stripped
+  (200-case sample, still 100%) — so the judge is reasoning goal-vs-action, not
+  reacting to injection markers. It still passes 16/17 benign, so it discriminates
+  rather than blocking everything. But InjecAgent attacks are **off-goal by
+  construction** (the attacker tool is always a different domain than the goal) —
+  exactly the class a goal-consistency judge is built for. This does **not** prove
+  coverage of *subtle on-goal* attacks (right tool, wrong recipient/amount), which
+  this benchmark barely tests.
+- **6% FP is on 17 benign cases** — indicative, not a production number. The one FP
+  is an over-cautious block of a legitimate `GmailSearchEmails`.
+
+Reproduce: `python eval/injecagent_eval.py --judge` (downloads InjecAgent on first run).
+
 ## Performance ([`benchmark/perf.py`](benchmark/perf.py))
 
 The deterministic tiers run inline on every tool call, so their cost matters.

@@ -92,8 +92,16 @@ Voan's judge catches them on **every run** (0 hijacks survived across 3 runs). C
 injections, frontier models resist on their own — we say so. We also **red-teamed
 Voan itself**: found a look-alike-destination exfil that fools the goal-based judge
 (2/4), then shipped the fix — an opt-in egress allowlist,
-`Firewall(egress_allowlist=["acme.com"])` — that closes it (0/4). Full method, both
-models, and honest limits: [BENCHMARK.md](BENCHMARK.md).
+`Firewall(egress_allowlist=["acme.com"])` — that closes it (0/4).
+
+And on a **third-party benchmark we did not build** —
+[InjecAgent](https://github.com/uiuc-kang-lab/InjecAgent), 1,054 indirect-injection
+scenarios across agents/tools we never configured for — Voan's judge gates **100%**
+(1054/1054) of the induced harmful tool calls at **6% FP** on legitimate ones, while
+the regex tier alone gates **0%** (the tools are domain-specific). That 0→100 is the
+honest shape of it: on a real agent the *judge* is the defense, and 100% holds
+because these attacks are off-goal by construction — subtle on-goal attacks are a
+harder class. Full method, caveats, and both evals: [BENCHMARK.md](BENCHMARK.md).
 
 ## Install
 
@@ -231,7 +239,8 @@ vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## Roadmap
 
-- Real-trace eval harness (the production FP/FN number)
+- Larger real-trace eval (more third-party benchmarks; a bigger benign corpus for
+  a tighter FP number — the current InjecAgent run is 17 benign cases)
 - npm publish for the JS SDK (now at full three-tier parity with Python, repo-local)
 - MCP: `guard_mcp` (client session) and `voan-mcp-proxy` (transparent proxy for both
   local stdio and remote HTTP MCP servers, zero-integration) — including serving the
