@@ -418,13 +418,26 @@ adaptive attacker can break it (there is no model or prompt in the enforcement).
 Proven by [`tests/test_capability.py`](tests/test_capability.py) (11 cases) and
 demonstrated end-to-end in [`examples/capability_demo.py`](examples/capability_demo.py).
 
-**Honest boundary — this is where drop-in ends.** The guarantee holds only for
-values the agent *threads through capsules*. Full CaMeL wraps the agent's whole
-data flow in a capability interpreter so nothing escapes; Voan gives you the same
-engine and enforcement, but an agent that passes a raw string the engine never saw
-falls back to the approximate tiers (taint / flow). Closing that last gap means the
-agent adopting the capsule dataflow (or a Voan-mediated interpreter) — the frontier
-that is, by construction, more than a wrapped-tool SDK.
+**The interpreter closes the gap — full CaMeL execution.** `CapabilityEngine.run`
+takes a *program* (the agent emits a list of steps; args reference prior steps with
+`$name`) and executes it, threading capabilities **automatically** — data read from
+a tool carries its untrusted/confidential label into every later step, so no
+untrusted value can escape into a sensitive sink. The agent never touches a capsule:
+
+```python
+program = [
+  {"var": "email", "tool": "read_email", "args": {}},
+  {"var": "payee", "tool": "extract_payee", "args": {"text": "$email"}},   # from untrusted email
+  {"tool": "send_money", "args": {"recipient": "$payee", "amount": 999}},  # DENIED, by construction
+]
+eng.run(program, tools, sources={"read_email"})   # halts before send_money runs
+```
+
+This is CaMeL's model — the *interpreter*, not the model, is trusted. The remaining
+honest boundary: an agent must express its work as a program (or thread capsules)
+for the guarantee to hold; a free-form agent passing raw strings falls back to the
+approximate tiers (taint / flow). That program-emitting step is the price of a
+*provable* defense — and it is now available in Voan, not just in the research.
 
 ## Performance ([`benchmark/perf.py`](benchmark/perf.py))
 

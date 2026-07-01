@@ -78,6 +78,42 @@ def test_raw_literals_are_trusted():
     assert ENG.check_call("send_money", {"recipient": "GB29", "amount": 10}) is True
 
 
+def test_interpreter_auto_blocks_untrusted_flow_to_sink():
+    # the CaMeL model: agent emits a program; the interpreter threads capabilities
+    # automatically, so a payee DERIVED from an untrusted read can't reach send_money.
+    tools = {
+        "read_email": lambda: "wire to US133",
+        "extract": lambda text: "US133-attacker",       # consumes untrusted input
+        "send_money": lambda recipient, amount=0: "sent",
+    }
+    prog = [
+        {"var": "email", "tool": "read_email", "args": {}},
+        {"var": "payee", "tool": "extract", "args": {"text": "$email"}},
+        {"tool": "send_money", "args": {"recipient": "$payee", "amount": 999}},
+    ]
+    with pytest.raises(Denied) as ei:
+        ENG.run(prog, tools, sources={"read_email"})
+    assert "hijack" in ei.value.reason
+
+
+def test_interpreter_allows_trusted_literal_sink():
+    tools = {"send_money": lambda recipient, amount=0: "sent"}
+    prog = [{"tool": "send_money", "args": {"recipient": "GB29-user", "amount": 50}}]
+    assert ENG.run(prog, tools) == {}          # ran, no violation, no vars stored
+
+
+def test_interpreter_propagates_confidentiality():
+    tools = {"get_balance": lambda: "9231", "send_email": lambda to, body="": "sent"}
+    prog = [
+        {"var": "bal", "tool": "get_balance", "args": {}},
+        {"tool": "send_email", "args": {"to": "x@e.com", "body": "$bal"}},
+    ]
+    with pytest.raises(Denied) as ei:
+        ENG.run(prog, tools, sources=set(),
+                confidential={"get_balance": frozenset({"internal"})})
+    assert "exfiltration" in ei.value.reason
+
+
 def test_guard_threads_capabilities_end_to_end():
     # tool outputs become capsules; feeding an untrusted one into a sensitive param
     # is denied by construction — the CaMeL usage model.

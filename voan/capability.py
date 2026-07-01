@@ -111,16 +111,25 @@ class CapabilityEngine:
                              f"reach '{cls}' sink {tool} — exfiltration")
         return True
 
+    def _tag_output(self, tool, args, result, source, readers):
+        """Capability of a tool's OUTPUT: untrusted if this tool is an untrusted
+        source OR any input was untrusted (taint propagates through the call);
+        readers = intersection of the inputs' readers and this tool's own."""
+        in_caps = [v for v in args.values() if isinstance(v, Capsule)]
+        combined = Capsule.combine(result, *in_caps, source=tool)
+        integ = UNTRUSTED if (source or combined.integrity == UNTRUSTED) else TRUSTED
+        rd = combined.readers if readers == frozenset({ANY}) else _intersect(combined.readers, readers)
+        return Capsule(result, integ, rd, tool)
+
     def guard(self, fn, tool, untrusted=True, readers=frozenset({ANY})):
         """Wrap a tool so (1) its Capsule arguments are checked against both
-        invariants before it runs, and (2) its RESULT is returned as a Capsule
-        tagged with this tool's provenance — so the label flows into whatever the
-        agent does next. This is how an agent threads capabilities through a chain."""
+        invariants before it runs, and (2) its RESULT is returned as a Capsule whose
+        label propagates this tool's provenance AND its untrusted inputs — so taint
+        flows into whatever the agent does next."""
         def wrapped(**kwargs):
             self.check_call(tool, kwargs)
             raw = {k: (v.value if isinstance(v, Capsule) else v) for k, v in kwargs.items()}
-            result = fn(**raw)
-            return Capsule(result, UNTRUSTED if untrusted else TRUSTED, readers, tool)
+            return self._tag_output(tool, kwargs, fn(**raw), untrusted, readers)
         wrapped.__name__ = getattr(fn, "__name__", tool)
         return wrapped
 
@@ -133,3 +142,35 @@ class CapabilityEngine:
         return {n: self.guard(f, n, untrusted=(n in sources),
                               readers=confidential.get(n, frozenset({ANY})))
                 for n, f in tools.items()}
+
+    def run(self, program, tools, sources=None, confidential=None, env=None):
+        """Interpret a capability-tracked PROGRAM — the CaMeL execution model. This
+        removes the last gap of the wrapped-tool version: the agent emits a plan of
+        steps and Voan runs it, threading capabilities AUTOMATICALLY so no untrusted
+        value can escape into a sensitive sink.
+
+        Each step is {tool, args, var?}. An arg value of "$name" resolves to the
+        capsule a prior step stored in `name` (so data read from a tool carries its
+        untrusted/confidential label into later steps); any other value is a trusted
+        literal. `sources` = tools whose own output is untrusted (default: all);
+        `confidential` = {tool: readers}. Raises Denied on the first violation.
+        Returns the env mapping var -> Capsule."""
+        env = dict(env or {})
+        srcs = set(tools if sources is None else sources)
+        conf = confidential or {}
+        for step in program:
+            tool = step["tool"]
+            args = {k: self._resolve(v, env) for k, v in step.get("args", {}).items()}
+            self.check_call(tool, args)
+            raw = {k: (v.value if isinstance(v, Capsule) else v) for k, v in args.items()}
+            out = self._tag_output(tool, args, tools[tool](**raw),
+                                   tool in srcs, conf.get(tool, frozenset({ANY})))
+            if step.get("var"):
+                env[step["var"]] = out
+        return env
+
+    @staticmethod
+    def _resolve(value, env):
+        if isinstance(value, str) and value.startswith("$"):
+            return env.get(value[1:], value)      # reference to a prior capsule
+        return value                               # trusted literal
