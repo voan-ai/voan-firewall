@@ -333,6 +333,33 @@ planning. Honest trade: recall (89%) sits below the judge alone (99%) because a
 auto-plan is a convenience layer; a hand-pinned plan (94%/2%) is stronger where it
 matters.
 
+### Taint provenance — a free, LLM-less exfil tier ([`voan/taint.py`](voan/taint.py))
+
+`Firewall(taint=True)` tracks a string-level approximation of provenance: values
+that first appear in an (untrusted) tool output are "data-derived", and a side
+effect that sends/pays to a data-derived target the user did **not** name in the
+goal is held for a human (ASK). It deterministically catches the classic exfil —
+a poisoned tool result introduces an attacker account, the agent pays/emails it,
+and taint gates it because that account came from data, not the request — **with no
+LLM call**. A target the user named in the goal is trusted and never gated.
+
+We measured it honestly, and it is **situational, not a free lunch**:
+
+| on AgentDojo in-domain | recall | benign FP (side-effects) |
+|---|:--:|:--:|
+| taint alone (deterministic) | 49% | 28% |
+| judge alone | 99% | 38% |
+| judge **+** taint | 99% | **54%** |
+
+Read plainly: **taint does not improve the judge** — stacked on it, it only adds
+false positives (54%), because the judge already blocks these off-goal targets.
+Its value is *standalone*: a zero-cost, zero-latency tier that catches ~half of
+in-domain exfil (and the classic poisoned-output-to-payment exfil outright) for
+deployments that can't or won't run an LLM. It is **opt-in, off by default**, and
+its verdict is ASK (data-derived sends are hold-for-human, the correct posture),
+not a hard block. Full per-value provenance (CaMeL) needs a capability interpreter
+around the agent — beyond a drop-in SDK; this is the pragmatic string-level version.
+
 ## Performance ([`benchmark/perf.py`](benchmark/perf.py))
 
 The deterministic tiers run inline on every tool call, so their cost matters.

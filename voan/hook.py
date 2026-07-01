@@ -20,7 +20,7 @@ from .schema import Action, BlockedAction, Decision, Session, Verdict
 class Firewall:
     def __init__(self, policy=None, audit=None, agent="agent",
                  on_ask=None, mode="enforce", judge=None, egress_allowlist=None,
-                 judge_fail_closed=False):
+                 judge_fail_closed=False, taint=False):
         self.policy = policy or PolicyEngine()
         self.audit = audit if audit is not None else AuditLog()
         self.agent = agent
@@ -36,11 +36,17 @@ class Firewall:
         self.egress_allowlist = egress_allowlist
         self.session = Session()
         self.plan = None              # optional plan-then-execute allowlist
+        # Optional taint tracking: flag side-effect targets that came from
+        # (untrusted) tool output rather than the user's goal — provenance.
+        from .taint import TaintTracker
+        self.taint = TaintTracker() if taint else None
 
     def set_goal(self, goal):
         """Tell the firewall what the user actually asked for, so the LLM judge
-        can spot actions that drift from it (hijacks). Resets the trace."""
+        can spot actions that drift from it (hijacks). Resets the trace/taint."""
         self.session = Session(goal=goal)
+        if self.taint is not None:
+            self.taint.reset()
         return self
 
     def set_plan(self, steps):
@@ -69,7 +75,7 @@ class Firewall:
         def wrapped(*args, **kwargs):
             action = Action(tool=tool, args=self._bind(fn, args, kwargs),
                             agent=self.agent)
-            base = self._egress(action, self.policy.evaluate(action))
+            base = self._taint(action, self._egress(action, self.policy.evaluate(action)))
             if self.plan is not None:
                 # Plan-then-execute: planned actions run; off-plan actions fall to
                 # the judge if one is configured (it backstops an incomplete plan
@@ -83,6 +89,8 @@ class Firewall:
             self._gate(action, verdict)
             result = fn(*args, **kwargs)
             self.session.add_output(tool, result)   # feeds the judge's context
+            if self.taint is not None:
+                self.taint.observe(result)           # untrusted-data provenance
             return result
 
         wrapped.__voan_guarded__ = True
@@ -98,6 +106,18 @@ class Firewall:
             return Verdict(Decision.BLOCK, rule="egress-allowlist", code="AEX",
                            severity="High",
                            reason=f"egress to non-allowlisted destination '{bad}'")
+        return verdict
+
+    def _taint(self, action, verdict):
+        """Provenance tier: escalate to ASK when a side-effect targets a value that
+        came from (untrusted) tool output and was NOT named in the user goal — its
+        provenance is untrusted (possibly injected), so hold it for a human."""
+        if self.taint is None or verdict.decision == Decision.BLOCK:
+            return verdict
+        bad = self.taint.bad_target(action, self.session.goal)
+        if bad:
+            return Verdict(Decision.ASK, rule="taint", code="AEX", severity="High",
+                           reason=f"target '{bad}' came from tool data, not your request")
         return verdict
 
     def _plan(self, action, verdict):

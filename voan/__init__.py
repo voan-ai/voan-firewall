@@ -24,6 +24,7 @@ from .policy import PolicyEngine
 from .presets import FAMILIES, deny_by_default, deny_by_default_rules
 from .rules import DEFAULT_RULES, Rule
 from .schema import Action, BlockedAction, Decision, Session, Verdict
+from .taint import TaintTracker
 
 __version__ = "0.1.11"
 __all__ = [
@@ -31,7 +32,7 @@ __all__ = [
     "LLMJudge", "openai_llm", "ollama_llm", "anthropic_llm",
     "openai_compatible_llm",
     "deny_by_default", "deny_by_default_rules", "FAMILIES",
-    "Plan", "PlanStep", "derive_plan",
+    "Plan", "PlanStep", "derive_plan", "TaintTracker",
     "Rule", "DEFAULT_RULES",
     "Action", "Verdict", "Decision", "Session", "BlockedAction",
 ]
