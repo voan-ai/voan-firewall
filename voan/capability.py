@@ -172,5 +172,11 @@ class CapabilityEngine:
     @staticmethod
     def _resolve(value, env):
         if isinstance(value, str) and value.startswith("$"):
-            return env.get(value[1:], value)      # reference to a prior capsule
+            base, _, field = value[1:].partition(".")   # supports $var and $var.field
+            cap = env.get(base)
+            if cap is None:
+                return value
+            if field and isinstance(cap, Capsule) and isinstance(cap.value, dict):
+                return cap.derive(cap.value.get(field, ""))   # field inherits the taint
+            return cap
         return value                               # trusted literal

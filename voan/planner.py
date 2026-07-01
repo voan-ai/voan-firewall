@@ -40,6 +40,29 @@ def _parse_list(raw):
     return []
 
 
+_PROG_SYS = (
+    "You are the PRIVILEGED planner of a capability-secured agent (CaMeL-style). "
+    "You see ONLY the trusted user goal and the tool list — never any external data. "
+    "Emit the program the agent will run, as a JSON list of steps. Each step is "
+    '{"tool": "<name>", "args": {...}, "var": "<name, optional>"}. An arg value of '
+    '"$x" references the output stored by an earlier step\'s var (that is how data '
+    "read from a tool flows on). Use a step's var to name outputs you will reuse. "
+    "Do NOT invent recipients/accounts from nowhere; if the goal names one, use it "
+    "as a literal. Output ONLY the JSON list.")
+
+
+def derive_capability_program(goal, tools, llm, max_steps=12):
+    """Ask the (privileged) LLM to emit a capability-interpreter PROGRAM from the
+    trusted goal — the planning half of CaMeL. Feed the result to
+    `CapabilityEngine.run(program, tools, ...)`, which threads capabilities and
+    enforces the invariants, so even a mis-planned or injection-shaped program can
+    never pay an untrusted recipient. Returns [] if unparseable."""
+    names = [t if isinstance(t, str) else t.get("name", "") for t in tools]
+    user = f"USER GOAL:\n{goal}\n\nTOOLS:\n{', '.join(names)}\n\nProgram (JSON list):"
+    steps = _parse_list(llm(_PROG_SYS, user))[:max_steps]
+    return [s for s in steps if isinstance(s, dict) and s.get("tool") in names]
+
+
 def derive_plan(goal, tools, llm, max_steps=12):
     """Return a list of plan steps (for Firewall.set_plan) derived from `goal`.
     `tools` is a list of tool names (or {"name","description"} dicts). `llm` is the

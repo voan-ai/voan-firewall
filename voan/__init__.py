@@ -21,7 +21,7 @@ from .judge import LLMJudge, ollama_llm, openai_llm
 from .capability import Capsule, CapabilityEngine, Denied
 from .flow import FlowMonitor
 from .plan import Plan, PlanStep
-from .planner import derive_plan
+from .planner import derive_capability_program, derive_plan
 from .policy import PolicyEngine
 from .quarantine import quarantined_llm
 from .presets import FAMILIES, deny_by_default, deny_by_default_rules
@@ -38,6 +38,7 @@ __all__ = [
     "deny_by_default", "deny_by_default_rules", "FAMILIES",
     "Plan", "PlanStep", "derive_plan", "TaintTracker", "RuleOfTwo", "FlowMonitor",
     "CapabilityEngine", "Capsule", "Denied", "quarantined_llm",
+    "derive_capability_program",
     "Rule", "DEFAULT_RULES",
     "Action", "Verdict", "Decision", "Session", "BlockedAction",
 ]

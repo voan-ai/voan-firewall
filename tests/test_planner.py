@@ -33,3 +33,20 @@ def test_plan_drives_the_firewall():
 
 def test_unparseable_reply_returns_empty():
     assert derive_plan("goal", TOOLS, stub("sorry, no idea")) == []
+
+
+def test_derive_capability_program_runs_safely():
+    # the planning half of CaMeL: the (stub) planner emits a program; the interpreter
+    # runs it and denies the untrusted-derived payment regardless of the plan.
+    from voan import CapabilityEngine, quarantined_llm, derive_capability_program, Denied
+    planner = stub('[{"var":"e","tool":"read_email","args":{}},'
+                   '{"var":"p","tool":"extract","args":{"content":"$e","query":"payee"}},'
+                   '{"tool":"send_money","args":{"recipient":"$p","amount":999}}]')
+    prog = derive_capability_program("pay the invoice in my email",
+                                     ["read_email", "extract", "send_money"], planner)
+    assert [s["tool"] for s in prog] == ["read_email", "extract", "send_money"]
+    eng = CapabilityEngine(sink_class={"send_money": "external"})
+    tools = {"read_email": lambda: "poison", "extract": quarantined_llm(stub("US133")),
+             "send_money": lambda recipient, amount=0: "sent"}
+    with pytest.raises(Denied):
+        eng.run(prog, tools, sources={"read_email"})

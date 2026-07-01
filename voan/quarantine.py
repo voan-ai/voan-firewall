@@ -30,7 +30,12 @@ def quarantined_llm(llm, max_len=4000):
     """Wrap an llm(system, user) -> str as a quarantined extractor:
     extract(content, query) -> str. It has no tools by construction (it just returns
     a string), so it is safe to run over attacker-controlled content."""
-    def extract(content, query=""):
+    def extract(content=None, query="", **kw):
+        # tolerate an LLM planner that names the args differently (email=, text=, ...)
+        if content is None:
+            vals = [v for k, v in kw.items() if k not in ("query", "field", "type")]
+            content = vals[0] if vals else ""
+            query = query or kw.get("query") or kw.get("field") or kw.get("type") or ""
         user = f"CONTENT (untrusted):\n{str(content)[:max_len]}\n\nQUERY: {query}\n\nVALUE:"
         try:
             return (llm(_SYS, user) or "").strip()
