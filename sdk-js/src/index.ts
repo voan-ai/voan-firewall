@@ -19,5 +19,7 @@ export type { FirewallOpts } from "./hook.ts";
 export { LLMJudge, openaiLlm, ollamaLlm } from "./judge.ts";
 export type { LLM, JudgeOpts } from "./judge.ts";
 export { guardAiSdkTools, guardOpenAIDispatch, guardCallables } from "./adapters.ts";
+export { Plan, PlanStep } from "./plan.ts";
+export type { PlanStepSpec } from "./plan.ts";
 
 export const VERSION = "0.1.11";  // tracks the Python package (repo-local, unpublished)

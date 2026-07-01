@@ -5,6 +5,7 @@
 // nothing is blocked — every decision is still logged.
 import { AuditLog } from "./audit.ts";
 import type { LLMJudge } from "./judge.ts";
+import { Plan, type PlanStepSpec } from "./plan.ts";
 import { PolicyEngine } from "./policy.ts";
 import { egressViolation } from "./rules.ts";
 import { type Action, BlockedAction, Decision, type Verdict } from "./schema.ts";
@@ -33,6 +34,7 @@ export class Firewall {
   judge?: LLMJudge;
   judgeFailClosed: boolean;
   goal?: string;
+  plan?: Plan;
   private trace: string[] = [];
 
   constructor(opts: FirewallOpts = {}) {
@@ -51,6 +53,15 @@ export class Firewall {
   setGoal(goal: string): this {
     this.goal = goal;
     this.trace = [];
+    return this;
+  }
+
+  /** Commit the actions the agent intends to take BEFORE it reads untrusted data.
+   *  Voan then allows only these (each once, args optionally pinned) and blocks
+   *  anything an injection adds or alters. Pass null to clear. Mirror of
+   *  voan/hook.py set_plan; see plan.ts. */
+  setPlan(steps: PlanStepSpec[] | null): this {
+    this.plan = steps ? new Plan(steps) : undefined;
     return this;
   }
 
@@ -83,8 +94,15 @@ export class Firewall {
     if (this.judge) {
       const wrapped = async function (this: unknown, ...args: unknown[]) {
         const action: Action = { tool, args: bindArgs(args), agent: self.agent, ts: now() };
-        let verdict = self.egress(action, self.policy.evaluate(action));
-        verdict = await self.judgeStep(action, verdict);
+        const base = self.egress(action, self.policy.evaluate(action));
+        let verdict: Verdict;
+        if (self.plan) {
+          // plan-then-execute; off-plan actions fall to the judge backstop
+          verdict = self.planTier(action, base);
+          if (verdict.rule === "off-plan") verdict = await self.judgeStep(action, base);
+        } else {
+          verdict = await self.judgeStep(action, base);
+        }
         self.audit.record(action, verdict);
         self.gate(action, verdict);
         const result = await fn.apply(this, args as never);
@@ -95,12 +113,22 @@ export class Firewall {
     }
     const wrapped = function (this: unknown, ...args: unknown[]) {
       const action: Action = { tool, args: bindArgs(args), agent: self.agent, ts: now() };
-      const verdict = self.egress(action, self.policy.evaluate(action));
+      let verdict = self.egress(action, self.policy.evaluate(action));
+      if (self.plan) verdict = self.planTier(action, verdict);  // no judge -> hard-block off-plan
       self.audit.record(action, verdict);
       self.gate(action, verdict);
       return fn.apply(this, args as never);
     };
     return wrapped as unknown as T;
+  }
+
+  // Plan-then-execute tier: allow only actions in the committed plan (consuming
+  // the step); anything an injection added or altered is off-plan and blocked.
+  private planTier(action: Action, verdict: Verdict): Verdict {
+    if (verdict.decision === Decision.BLOCK || !this.plan) return verdict;
+    if (this.plan.allows(action)) return verdict;
+    return { decision: Decision.BLOCK, rule: "off-plan", code: "AGT",
+      severity: "High", reason: "action was not in the committed plan" };
   }
 
   guardTools<M extends Record<string, Fn>>(tools: M): M {

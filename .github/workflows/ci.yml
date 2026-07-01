@@ -45,10 +45,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-      - name: JS parity, judge, and adapter suites
+      - name: JS parity, judge, adapter, and plan suites
         run: |
           node sdk-js/verify.ts
           node sdk-js/judge_verify.ts
           node sdk-js/adapters_verify.ts
+          node sdk-js/plan_verify.ts
       - name: JS demo blocks the attacks
         run: node sdk-js/demo.ts
