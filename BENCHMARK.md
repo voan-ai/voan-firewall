@@ -439,6 +439,19 @@ for the guarantee to hold; a free-form agent passing raw strings falls back to t
 approximate tiers (taint / flow). That program-emitting step is the price of a
 *provable* defense — and it is now available in Voan, not just in the research.
 
+**Validated on real tasks, not a demo.** `capability_agent(goal, tools, llm)` (the
+one-call loop: derive the program, run it through the interpreter) was run over real
+AgentDojo tasks with the suite's actual tools — **75% of benign tasks completed**
+(utility), in line with CaMeL's published 77% vs an 84% undefended baseline. That
+~25% utility cost is the honest price of the static-program model (a program derived
+from the goal can't always follow a dynamic task) — the same tradeoff CaMeL reports.
+Security holds two ways: the fixed program structurally can't gain an *injected extra*
+action, and the interpreter denied the untrusted→sink flows it did see. The mechanical
+grounding guard is likewise proven end-to-end on a **real** LangChain agent (Python)
+and a **real** OpenAI function-calling agent (JS,
+[`sdk-js/examples/auto_attack.ts`](sdk-js/examples/auto_attack.ts)) — the injected
+exfil is held by the deterministic rule, no LLM.
+
 ## Performance ([`benchmark/perf.py`](benchmark/perf.py))
 
 The deterministic tiers run inline on every tool call, so their cost matters.
