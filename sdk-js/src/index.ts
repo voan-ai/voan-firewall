@@ -22,5 +22,11 @@ export { guardAiSdkTools, guardOpenAIDispatch, guardCallables } from "./adapters
 export { Plan, PlanStep } from "./plan.ts";
 export type { PlanStepSpec } from "./plan.ts";
 export { AutoGuard, guardLangchainAuto, isSideEffect } from "./auto.ts";
+export { Capsule, CapabilityEngine, Denied, TRUSTED, UNTRUSTED, ANY } from "./capability.ts";
+export { RuleOfTwo, EXTERNAL, SENSITIVE } from "./rule_of_two.ts";
+export { TaintTracker } from "./taint.ts";
+export { FlowMonitor } from "./flow.ts";
+export { quarantinedLlm } from "./quarantine.ts";
+export { derivePlan, deriveCapabilityProgram } from "./planner.ts";
 
 export const VERSION = "0.1.11";  // tracks the Python package (repo-local, unpublished)

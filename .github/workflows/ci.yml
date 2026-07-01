@@ -52,5 +52,6 @@ jobs:
           node sdk-js/adapters_verify.ts
           node sdk-js/plan_verify.ts
           node sdk-js/auto_verify.ts
+          node sdk-js/parity_verify.ts
       - name: JS demo blocks the attacks
         run: node sdk-js/demo.ts
