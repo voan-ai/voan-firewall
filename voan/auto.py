@@ -37,14 +37,21 @@ _STOP = {"true", "false", "null", "none", "http", "https", "status", "amount",
 class AutoGuard:
     """Shared provenance state across a wrapped tool set."""
 
-    def __init__(self, goal="", block=True):
+    def __init__(self, goal="", block=True, verify=None):
         self.goal = str(goal or "").lower()
         self.block = block
+        # Optional goal-authorized verifier: llm(system,user)->str. When set, an
+        # ungrounded recipient is ALLOWED only if the verifier confirms the goal
+        # intends it (sound, model-scaling); without it, the deterministic blocklist
+        # (flag recipients seen in untrusted output) is used.
+        self.verify = verify
         self.untrusted = set()          # tokens seen leaving untrusted source tools
+        self.context = []               # raw untrusted outputs, for the verifier
 
     def set_goal(self, goal):
         self.goal = str(goal or "").lower()
         self.untrusted = set()
+        self.context = []
         return self
 
     def _tokens(self, text):
@@ -62,19 +69,30 @@ class AutoGuard:
 
     def observe(self, output):
         self.untrusted |= self._tokens(output)
+        self.context.append(str(output)[:600])
 
     def violation(self, args):
-        """First untrusted token in a DESTINATION/RECIPIENT arg that the user didn't
-        name — i.e. the side effect is being sent to a target that came from tool
-        data (the exfil signal), not merely carrying read data in its body."""
+        """First DESTINATION/RECIPIENT arg the user didn't name and that isn't
+        authorized. With a verifier: any ungrounded recipient must be confirmed
+        goal-intended (sound allowlist). Without: flag a recipient whose value came
+        from untrusted tool output (deterministic blocklist)."""
         if not isinstance(args, dict):
             return None
         for k, v in args.items():
             if not any(t in str(k).lower() for t in _TARGET_KEYS):
                 continue
-            for tok in self._tokens(v):
-                if tok in self.untrusted and tok not in self.goal:
-                    return tok
+            tokens = self._tokens(v)
+            ungrounded = {t for t in tokens if t not in self.goal}
+            if not ungrounded:
+                continue                                  # recipient named in goal
+            if self.verify is not None:
+                from .authorize import goal_authorized    # sound, model-scaling
+                if not goal_authorized(self.goal, v, "\n".join(self.context), self.verify):
+                    return str(v)
+            else:
+                hit = ungrounded & self.untrusted         # data-derived recipient
+                if hit:
+                    return next(iter(hit))
         return None
 
     def wrap(self, fn, name, desc="", source=None, sink=None):
@@ -101,12 +119,14 @@ class AutoGuard:
         return wrapped
 
 
-def guard_langchain_auto(tools, goal="", sources=None, sinks=None):
+def guard_langchain_auto(tools, goal="", sources=None, sinks=None, verify=None):
     """Auto-instrument a list of LangChain tools. Voan classifies each tool and
     shares one provenance tracker across them, so an injected value read by one tool
     is blocked when another tool tries to send it out — no manual wiring. `sources`
-    / `sinks` (sets of tool names) override the heuristic. Returns (tools, guard)."""
-    g = AutoGuard(goal)
+    / `sinks` (sets of tool names) override the heuristic. Pass `verify=llm` for the
+    sound, model-scaling goal-authorized mode (an ungrounded recipient must be
+    confirmed goal-intended). Returns (tools, guard)."""
+    g = AutoGuard(goal, verify=verify)
     for t in tools:
         name = getattr(t, "name", None) or getattr(t, "__name__", "tool")
         desc = getattr(t, "description", "") or ""
