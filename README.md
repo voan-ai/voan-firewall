@@ -160,6 +160,28 @@ tools = fw.guard_tools(tools)
 > [Data handling](#data-handling--threat-model). (The protected agent itself is
 > framework- and model-agnostic — LangChain, OpenAI, plain functions all work.)
 
+### Auto-instrumentation — strong defense, zero config
+
+The strong tiers usually ask you to declare a goal, a plan, or capabilities. The
+one line below asks for **nothing**: point it at a real **LangChain** agent's tools
+and Voan classifies each one itself (untrusted source vs. side-effect sink) and
+tracks provenance across the run — so a value read from a poisoned tool output is
+blocked when the agent tries to send it out. **No LLM judge, deterministic**, so it
+can't be prompted away.
+
+```python
+from voan import guard_langchain_auto
+tools, _ = guard_langchain_auto(my_langchain_tools, goal=user_request)  # that's it
+```
+
+On a genuine `create_agent` + gpt-4o-mini agent hijacked by a poisoned order lookup
+([`examples/langchain_auto_attack.py`](examples/langchain_auto_attack.py)): unguarded
+the customer data is **exfiltrated to the attacker**; auto-guarded the exfil email is
+**blocked** — Voan saw the attacker address come out of the lookup and refuse to let
+it leave. (Provenance catches the exfil; pair it with the judge to also catch a
+goal-inconsistent refund. Classification is a heuristic — override with
+`sources=`/`sinks=`; string-level tracking can miss a paraphrased value.)
+
 Works on real frameworks too — genuine LangChain tools (with `langchain-core`
 installed) via [`voan/adapters.py`](voan/adapters.py):
 

@@ -1,0 +1,105 @@
+"""Auto-instrumentation — attach provenance defense to a real agent framework with
+zero manual config. The strong tiers (capability engine) need the agent to adopt a
+program model; most agents are free-form LangChain/OpenAI loops. This bridges the
+gap: Voan inspects the tools, classifies each one's role (untrusted SOURCE vs.
+side-effect SINK) from its name/description, and tracks which values flow out of
+source outputs into sink arguments — blocking a sink argument that carries untrusted
+data the user never named. It is the automatic, framework-wired version of taint
+provenance: the developer just wraps their tools, Voan configures itself.
+
+Honest limits (the reason this is a bet, not a guarantee): classification is a
+heuristic (override with `sources=`/`sinks=`), and value tracking is string-level,
+so an LLM that paraphrases a leaked value can slip past. It catches the common,
+literal injection→exfil pattern automatically; it is not the provable capability
+engine.
+"""
+import json
+import re
+
+from .taint import is_side_effect
+
+_SOURCE_HINTS = ("read", "fetch", "search", "list", "email", "web", "file", "inbox",
+                 "message", "review", "lookup", "load", "browse", "get", "retrieve",
+                 "scrape", "content", "doc", "page", "mail", "calendar", "note")
+_TOKEN = re.compile(r"[A-Za-z0-9@._+\-]{4,}")
+_STOP = {"true", "false", "null", "none", "http", "https", "status", "amount",
+         "true.", "this", "that", "with", "from", "your", "please", "order",
+         "message", "email", "name", "date", "type", "value", "text", "data"}
+
+
+class AutoGuard:
+    """Shared provenance state across a wrapped tool set."""
+
+    def __init__(self, goal="", block=True):
+        self.goal = str(goal or "").lower()
+        self.block = block
+        self.untrusted = set()          # tokens seen leaving untrusted source tools
+
+    def set_goal(self, goal):
+        self.goal = str(goal or "").lower()
+        self.untrusted = set()
+        return self
+
+    def _tokens(self, text):
+        s = text if isinstance(text, str) else json.dumps(text, default=str)
+        return {t.lower() for t in _TOKEN.findall(s) if t.lower() not in _STOP and len(t) >= 4}
+
+    def is_source(self, name, desc=""):
+        # Any tool that is not a side-effect returns data the agent reads — and tool
+        # output is exactly where injections live, so treat it as an untrusted
+        # source. (Hints are a fallback for oddly-named tools.)
+        if not is_side_effect(name):
+            return True
+        t = (str(name) + " " + str(desc)).lower()
+        return any(h in t for h in _SOURCE_HINTS)
+
+    def observe(self, output):
+        self.untrusted |= self._tokens(output)
+
+    def violation(self, args):
+        """First untrusted token carried by a sink's args that the user didn't name."""
+        for tok in self._tokens(args):
+            if tok in self.untrusted and tok not in self.goal:
+                return tok
+        return None
+
+    def wrap(self, fn, name, desc="", source=None, sink=None):
+        src = self.is_source(name, desc) if source is None else source
+        snk = is_side_effect(name) if sink is None else sink
+
+        def wrapped(*a, **k):
+            args = k if k else ({"input": a[0]} if len(a) == 1 else
+                                {f"a{i}": x for i, x in enumerate(a)})
+            if snk:
+                bad = self.violation(args)
+                if bad:
+                    msg = (f"\U0001f6d1 Voan blocked {name}: it carries '{bad}', a value "
+                           f"that came from tool data, not the user's request "
+                           f"(possible injected exfiltration). Do not retry; ask the user.")
+                    if self.block:
+                        return msg
+            result = fn(*a, **k)
+            if src:
+                self.observe(result)
+            return result
+
+        wrapped.__name__ = getattr(fn, "__name__", str(name))
+        return wrapped
+
+
+def guard_langchain_auto(tools, goal="", sources=None, sinks=None):
+    """Auto-instrument a list of LangChain tools. Voan classifies each tool and
+    shares one provenance tracker across them, so an injected value read by one tool
+    is blocked when another tool tries to send it out — no manual wiring. `sources`
+    / `sinks` (sets of tool names) override the heuristic. Returns (tools, guard)."""
+    g = AutoGuard(goal)
+    for t in tools:
+        name = getattr(t, "name", None) or getattr(t, "__name__", "tool")
+        desc = getattr(t, "description", "") or ""
+        src = None if not sources else (name in sources)
+        snk = None if not sinks else (name in sinks)
+        if getattr(t, "func", None) and callable(t.func):
+            t.func = g.wrap(t.func, name, desc, src, snk)
+        elif getattr(t, "coroutine", None):
+            t.coroutine = g.wrap(t.coroutine, name, desc, src, snk)
+    return tools, g

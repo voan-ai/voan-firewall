@@ -18,6 +18,7 @@ from .audit import AuditLog
 from .backends import anthropic_llm, openai_compatible_llm
 from .hook import Firewall, guard
 from .judge import LLMJudge, ollama_llm, openai_llm
+from .auto import AutoGuard, guard_langchain_auto
 from .capability import Capsule, CapabilityEngine, Denied
 from .flow import FlowMonitor
 from .plan import Plan, PlanStep
@@ -38,7 +39,7 @@ __all__ = [
     "deny_by_default", "deny_by_default_rules", "FAMILIES",
     "Plan", "PlanStep", "derive_plan", "TaintTracker", "RuleOfTwo", "FlowMonitor",
     "CapabilityEngine", "Capsule", "Denied", "quarantined_llm",
-    "derive_capability_program",
+    "derive_capability_program", "AutoGuard", "guard_langchain_auto",
     "Rule", "DEFAULT_RULES",
     "Action", "Verdict", "Decision", "Session", "BlockedAction",
 ]
