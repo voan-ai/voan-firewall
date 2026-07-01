@@ -229,6 +229,15 @@ python eval/run_eval.py                # reproduce the eval numbers above
   only those (each once, recipient optionally pinned) and blocks anything an
   injection adds or alters — **deterministic, no LLM call**. On AgentDojo it cuts
   in-domain false positives ~5× vs the judge (see [BENCHMARK.md](BENCHMARK.md)).
+- **Rule of Two** ([`rule_of_two.py`](voan/rule_of_two.py)) — Meta's 2026 agent
+  design constraint as a deterministic tier: a session should hold at most two of
+  *untrusted input · sensitive data · external action*. `Firewall(rule_of_two=caps)`
+  holds (ASK) an external side effect once the session already touched untrusted
+  **and** sensitive — the exfiltration path. **Adaptive-attack-proof for the
+  capability it governs**: no prompt can argue away a capability count.
+- **Taint provenance** ([`taint.py`](voan/taint.py)) — opt-in `Firewall(taint=True)`;
+  a side-effect target that came from (untrusted) tool output and wasn't named in
+  the goal is held. A free, no-LLM catch for the classic poisoned-output→payout exfil.
 - **Audit + dashboard** — JSONL trail + live WebSocket feed.
 
 ## Data handling & threat model

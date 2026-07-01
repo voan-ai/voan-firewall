@@ -20,7 +20,7 @@ from .schema import Action, BlockedAction, Decision, Session, Verdict
 class Firewall:
     def __init__(self, policy=None, audit=None, agent="agent",
                  on_ask=None, mode="enforce", judge=None, egress_allowlist=None,
-                 judge_fail_closed=False, taint=False):
+                 judge_fail_closed=False, taint=False, rule_of_two=None):
         self.policy = policy or PolicyEngine()
         self.audit = audit if audit is not None else AuditLog()
         self.agent = agent
@@ -40,6 +40,13 @@ class Firewall:
         # (untrusted) tool output rather than the user's goal — provenance.
         from .taint import TaintTracker
         self.taint = TaintTracker() if taint else None
+        # Optional Agents Rule of Two: gate an external side effect once a session
+        # has already touched untrusted input AND sensitive data.
+        if rule_of_two:
+            from .rule_of_two import RuleOfTwo
+            self.r2 = RuleOfTwo(rule_of_two if isinstance(rule_of_two, dict) else None)
+        else:
+            self.r2 = None
 
     def set_goal(self, goal):
         """Tell the firewall what the user actually asked for, so the LLM judge
@@ -47,6 +54,8 @@ class Firewall:
         self.session = Session(goal=goal)
         if self.taint is not None:
             self.taint.reset()
+        if self.r2 is not None:
+            self.r2.reset()
         return self
 
     def set_plan(self, steps):
@@ -75,7 +84,8 @@ class Firewall:
         def wrapped(*args, **kwargs):
             action = Action(tool=tool, args=self._bind(fn, args, kwargs),
                             agent=self.agent)
-            base = self._taint(action, self._egress(action, self.policy.evaluate(action)))
+            base = self._rule_of_two(action,
+                self._taint(action, self._egress(action, self.policy.evaluate(action))))
             if self.plan is not None:
                 # Plan-then-execute: planned actions run; off-plan actions fall to
                 # the judge if one is configured (it backstops an incomplete plan
@@ -106,6 +116,19 @@ class Firewall:
             return Verdict(Decision.BLOCK, rule="egress-allowlist", code="AEX",
                            severity="High",
                            reason=f"egress to non-allowlisted destination '{bad}'")
+        return verdict
+
+    def _rule_of_two(self, action, verdict):
+        """Agents Rule of Two: fold the action's capabilities into the session and,
+        if it is an EXTERNAL side effect while the session already holds UNTRUSTED
+        and SENSITIVE, hold it for a human (ASK) — all three is the exfil path."""
+        if self.r2 is None or verdict.decision == Decision.BLOCK:
+            return verdict
+        violated = self.r2.violates(action)
+        self.r2.observe(action)
+        if violated:
+            return Verdict(Decision.ASK, rule="rule-of-two", code="AGT", severity="High",
+                           reason="untrusted + sensitive + external in one session; confirm")
         return verdict
 
     def _taint(self, action, verdict):
