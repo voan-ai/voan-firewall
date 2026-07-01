@@ -386,6 +386,46 @@ deterministic, model-external enforcement and treats the LLM judge as a soft
 backstop. Voan is built that way: rules / egress / plan / taint / Rule of Two are
 deterministic; the judge is one opt-in tier, not the foundation.
 
+### The capability engine — a *provable* guarantee, not a percentage ([`voan/capability.py`](voan/capability.py))
+
+Every tier above is statistical: a recall number on a benchmark. The 2026 frontier
+(CaMeL, Debenedetti et al.; FIDES, Microsoft) is categorically different — it makes
+whole attack classes **structurally impossible** by tracking a capability on every
+value. Voan now ships that core. Each value carries an **integrity** label (was it
+derived only from trusted input, or did untrusted data touch it?) and a
+**confidentiality** label (which sink classes may receive it); the labels propagate
+through operations (`Capsule.combine` → untrusted if any input is; readers → the
+intersection). Two invariants are then enforced per value:
+
+- **Integrity / anti-hijack:** an untrusted value may never be a control-sensitive
+  argument of a side effect (a recipient, destination, command). If a payee was
+  derived from an email, an injection controlled it → denied.
+- **Confidentiality / anti-exfil:** a value may only reach a sink whose class is in
+  its readers set → a confidential balance can't leave via an external send.
+
+```python
+from voan import CapabilityEngine
+eng = CapabilityEngine(sink_class={"send_money": "external"})
+tools = eng.guard_tools({"read_email": read_email, "send_money": send_money},
+                        sources={"read_email"})       # read_email output = untrusted
+# paying a recipient derived from the (untrusted) email is denied by construction;
+# paying eng.trusted(payee_the_user_named) goes through. No LLM, no prompt to attack.
+```
+
+There is **no benchmark number here on purpose** — the guarantee is structural, so
+for every value that flows through a Capsule the invariant holds 100%, and no
+adaptive attacker can break it (there is no model or prompt in the enforcement).
+Proven by [`tests/test_capability.py`](tests/test_capability.py) (11 cases) and
+demonstrated end-to-end in [`examples/capability_demo.py`](examples/capability_demo.py).
+
+**Honest boundary — this is where drop-in ends.** The guarantee holds only for
+values the agent *threads through capsules*. Full CaMeL wraps the agent's whole
+data flow in a capability interpreter so nothing escapes; Voan gives you the same
+engine and enforcement, but an agent that passes a raw string the engine never saw
+falls back to the approximate tiers (taint / flow). Closing that last gap means the
+agent adopting the capsule dataflow (or a Voan-mediated interpreter) — the frontier
+that is, by construction, more than a wrapped-tool SDK.
+
 ## Performance ([`benchmark/perf.py`](benchmark/perf.py))
 
 The deterministic tiers run inline on every tool call, so their cost matters.

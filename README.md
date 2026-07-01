@@ -244,9 +244,18 @@ python eval/run_eval.py                # reproduce the eval numbers above
   *leaving*, whatever the destination. Deterministic, finer than Rule of Two.
 - **Audit + dashboard** — JSONL trail + live WebSocket feed.
 
+- **Capability engine** ([`capability.py`](voan/capability.py)) — the CaMeL/FIDES
+  *provable* core. Every value carries a capability (integrity + confidentiality)
+  that propagates through operations; an untrusted value can never steer a side
+  effect, and a confidential value can never reach an unauthorized sink — enforced
+  per value, **by construction, not by a percentage**. `eng.guard_tools(...)` threads
+  the labels through your tool chain (see [`examples/capability_demo.py`](examples/capability_demo.py)).
+
 > Tiers marked deterministic (rules, egress, plan, taint, Rule of Two, information
-> flow) can't be argued away by a prompt — the 2026 direction after adaptive attacks
-> broke judge-only defenses. The LLM judge is one **opt-in** tier, not the foundation.
+> flow, capability engine) can't be argued away by a prompt — the 2026 direction
+> after adaptive attacks broke judge-only defenses. The LLM judge is one **opt-in**
+> tier, not the foundation. The capability engine is a *provable* guarantee (for
+> values threaded through it), the frontier that CaMeL and FIDES define.
 
 ## Data handling & threat model
 
