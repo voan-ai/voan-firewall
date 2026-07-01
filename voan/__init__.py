@@ -23,6 +23,7 @@ from .flow import FlowMonitor
 from .plan import Plan, PlanStep
 from .planner import derive_plan
 from .policy import PolicyEngine
+from .quarantine import quarantined_llm
 from .presets import FAMILIES, deny_by_default, deny_by_default_rules
 from .rule_of_two import RuleOfTwo
 from .rules import DEFAULT_RULES, Rule
@@ -36,7 +37,7 @@ __all__ = [
     "openai_compatible_llm",
     "deny_by_default", "deny_by_default_rules", "FAMILIES",
     "Plan", "PlanStep", "derive_plan", "TaintTracker", "RuleOfTwo", "FlowMonitor",
-    "CapabilityEngine", "Capsule", "Denied",
+    "CapabilityEngine", "Capsule", "Denied", "quarantined_llm",
     "Rule", "DEFAULT_RULES",
     "Action", "Verdict", "Decision", "Session", "BlockedAction",
 ]
