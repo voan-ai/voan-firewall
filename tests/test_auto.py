@@ -68,6 +68,17 @@ def test_manual_override_of_classification():
     assert w(to="secretvalue").startswith("\U0001f6d1 Voan held")   # untrusted target
 
 
+def test_rule_of_two_holds_non_recipient_external_action():
+    # a post/share with NO recipient, after the session read untrusted + sensitive
+    # data, is held mechanically (the exfil path) — extends beyond recipient checks.
+    g = AutoGuard(goal="summarize my finances")
+    web = g.wrap(lambda url: "some web content", "read_webpage")        # untrusted source
+    bal = g.wrap(lambda: "balance 9000", "get_balance")                 # sensitive source
+    post = g.wrap(lambda content: "posted", "post_webpage")             # external, no target
+    web(url="x"); bal()
+    assert post(content="anything").startswith("\U0001f6d1 Voan held")
+
+
 def test_goal_authorized_verifier_allows_and_blocks():
     from voan import goal_authorized
     yes = lambda s, u: "YES"

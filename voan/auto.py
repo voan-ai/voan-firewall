@@ -21,6 +21,10 @@ from .taint import is_side_effect
 _SOURCE_HINTS = ("read", "fetch", "search", "list", "email", "web", "file", "inbox",
                  "message", "review", "lookup", "load", "browse", "get", "retrieve",
                  "scrape", "content", "doc", "page", "mail", "calendar", "note")
+# Tools whose OUTPUT is sensitive (for the Rule-of-Two capability check below).
+_SENSITIVE_HINTS = ("balance", "transaction", "account", "payment", "secret",
+                    "password", "private", "salary", "ssn", "card", "health",
+                    "scheduled", "statement", "credential", "iban", "contact")
 # Args that name WHERE a side effect goes. Only these are checked — a legit agent
 # constantly puts read data in a body/subject; the hijack signal is untrusted data
 # in the RECIPIENT/DESTINATION, not in the payload. (Checking every arg over-blocks
@@ -47,12 +51,22 @@ class AutoGuard:
         self.verify = verify
         self.untrusted = set()          # tokens seen leaving untrusted source tools
         self.context = []               # raw untrusted outputs, for the verifier
+        self.caps = set()               # Rule-of-Two session capabilities
 
     def set_goal(self, goal):
         self.goal = str(goal or "").lower()
         self.untrusted = set()
         self.context = []
+        self.caps = set()
         return self
+
+    def _rule_of_two(self, name, args):
+        """A side effect with no user-named target, taken once the session already
+        holds untrusted input AND sensitive data, is the exfil path — held. Catches
+        post/share/add attacks that carry no recipient for the grounding check."""
+        has_target = isinstance(args, dict) and any(
+            any(t in str(k).lower() for t in _TARGET_KEYS) for k in args)
+        return (not has_target) and {"untrusted", "sensitive"} <= self.caps
 
     def _tokens(self, text):
         s = text if isinstance(text, str) else json.dumps(text, default=str)
@@ -96,22 +110,29 @@ class AutoGuard:
     def wrap(self, fn, name, desc="", source=None, sink=None):
         src = self.is_source(name, desc) if source is None else source
         snk = is_side_effect(name) if sink is None else sink
+        sensitive = any(h in (str(name) + " " + str(desc)).lower() for h in _SENSITIVE_HINTS)
 
         def wrapped(*a, **k):
             args = k if k else ({"input": a[0]} if len(a) == 1 else
                                 {f"a{i}": x for i, x in enumerate(a)})
             if snk:
-                bad = self.violation(args)
-                if bad:
-                    msg = (f"\U0001f6d1 Voan held {name}: the destination '{bad}' is not one "
-                           f"the user named in their request, so it can't be authorized "
-                           f"automatically (it may be an injected destination). Ask the "
-                           f"user to confirm this destination before proceeding.")
-                    if self.block:
-                        return msg
+                bad = self.violation(args)                    # ungrounded recipient
+                reason = (f"the destination '{bad}' is not one the user named" if bad
+                          else ("this action can send data out, and the session has "
+                                "already read untrusted content and sensitive data"
+                                if self._rule_of_two(name, args) else None))
+                if reason and self.block:
+                    return (f"\U0001f6d1 Voan held {name}: {reason}, so it can't be "
+                            f"authorized automatically (possible injected action). "
+                            f"Ask the user to confirm before proceeding.")
             result = fn(*a, **k)
             if src:
                 self.observe(result)
+                self.caps.add("untrusted")
+                if sensitive:
+                    self.caps.add("sensitive")
+            if snk:
+                self.caps.add("external")
             return result
 
         wrapped.__name__ = getattr(fn, "__name__", str(name))
