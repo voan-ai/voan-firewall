@@ -20,7 +20,7 @@ from .schema import Action, BlockedAction, Decision, Session, Verdict
 class Firewall:
     def __init__(self, policy=None, audit=None, agent="agent",
                  on_ask=None, mode="enforce", judge=None, egress_allowlist=None,
-                 judge_fail_closed=False, taint=False, rule_of_two=None):
+                 judge_fail_closed=False, taint=False, rule_of_two=None, flow=None):
         self.policy = policy or PolicyEngine()
         self.audit = audit if audit is not None else AuditLog()
         self.agent = agent
@@ -47,6 +47,13 @@ class Firewall:
             self.r2 = RuleOfTwo(rule_of_two if isinstance(rule_of_two, dict) else None)
         else:
             self.r2 = None
+        # Optional information-flow monitor: confidential-read data must not leave
+        # via an external sink (FIDES-style confidentiality). `flow` = tool names.
+        if flow:
+            from .flow import FlowMonitor
+            self.flow = FlowMonitor(flow)
+        else:
+            self.flow = None
 
     def set_goal(self, goal):
         """Tell the firewall what the user actually asked for, so the LLM judge
@@ -56,6 +63,8 @@ class Firewall:
             self.taint.reset()
         if self.r2 is not None:
             self.r2.reset()
+        if self.flow is not None:
+            self.flow.reset()
         return self
 
     def set_plan(self, steps):
@@ -84,8 +93,8 @@ class Firewall:
         def wrapped(*args, **kwargs):
             action = Action(tool=tool, args=self._bind(fn, args, kwargs),
                             agent=self.agent)
-            base = self._rule_of_two(action,
-                self._taint(action, self._egress(action, self.policy.evaluate(action))))
+            base = self._flow(action, self._rule_of_two(action,
+                self._taint(action, self._egress(action, self.policy.evaluate(action)))))
             if self.plan is not None:
                 # Plan-then-execute: planned actions run; off-plan actions fall to
                 # the judge if one is configured (it backstops an incomplete plan
@@ -101,6 +110,8 @@ class Firewall:
             self.session.add_output(tool, result)   # feeds the judge's context
             if self.taint is not None:
                 self.taint.observe(result)           # untrusted-data provenance
+            if self.flow is not None:
+                self.flow.observe(tool, result)      # confidential-data provenance
             return result
 
         wrapped.__voan_guarded__ = True
@@ -116,6 +127,18 @@ class Firewall:
             return Verdict(Decision.BLOCK, rule="egress-allowlist", code="AEX",
                            severity="High",
                            reason=f"egress to non-allowlisted destination '{bad}'")
+        return verdict
+
+    def _flow(self, action, verdict):
+        """Information-flow tier: hold (ASK) an external side effect that carries a
+        value read from a declared confidential source — data leaving, whatever the
+        destination (FIDES-style confidentiality)."""
+        if self.flow is None or verdict.decision == Decision.BLOCK:
+            return verdict
+        leak = self.flow.leaks(action)
+        if leak:
+            return Verdict(Decision.ASK, rule="info-flow", code="AEX", severity="High",
+                           reason=f"action carries confidential data '{leak}' out")
         return verdict
 
     def _rule_of_two(self, action, verdict):

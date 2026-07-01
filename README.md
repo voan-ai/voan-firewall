@@ -238,7 +238,15 @@ python eval/run_eval.py                # reproduce the eval numbers above
 - **Taint provenance** ([`taint.py`](voan/taint.py)) — opt-in `Firewall(taint=True)`;
   a side-effect target that came from (untrusted) tool output and wasn't named in
   the goal is held. A free, no-LLM catch for the classic poisoned-output→payout exfil.
+- **Information flow** ([`flow.py`](voan/flow.py)) — the confidentiality half of
+  FIDES-style labels: `Firewall(flow=["get_balance", ...])` holds any external
+  action that carries a value read from a declared confidential source — data
+  *leaving*, whatever the destination. Deterministic, finer than Rule of Two.
 - **Audit + dashboard** — JSONL trail + live WebSocket feed.
+
+> Tiers marked deterministic (rules, egress, plan, taint, Rule of Two, information
+> flow) can't be argued away by a prompt — the 2026 direction after adaptive attacks
+> broke judge-only defenses. The LLM judge is one **opt-in** tier, not the foundation.
 
 ## Data handling & threat model
 
