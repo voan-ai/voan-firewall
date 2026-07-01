@@ -33,6 +33,26 @@ function tokens(v: unknown): Set<string> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Fn = (...a: any[]) => any;
 
+/** One call for the full, PROVABLE CaMeL loop (JS port of voan.capability_agent):
+ *  derive the program from the trusted goal, auto-classify tools, and run it through
+ *  the capability interpreter so no untrusted value can reach a sink. Returns the
+ *  interpreter env; throws Denied on a violation. */
+export async function capabilityAgent(
+  goal: string, tools: Record<string, Fn>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  llm: (s: string, u: string) => Promise<string>,
+  sinkClass?: Record<string, string>, sources?: Set<string>,
+): Promise<Record<string, unknown>> {
+  const { CapabilityEngine } = await import("./capability.ts");
+  const { deriveCapabilityProgram } = await import("./planner.ts");
+  const names = Object.keys(tools);
+  const sinks = new Set(names.filter(isSideEffect));
+  const sc = sinkClass ?? Object.fromEntries([...sinks].map((n) => [n, "external"]));
+  const srcs = sources ?? new Set(names.filter((n) => !sinks.has(n)));
+  const program = await deriveCapabilityProgram(goal, names, llm);
+  return new CapabilityEngine(sc).run(program as never, tools, srcs);
+}
+
 export class AutoGuard {
   goal: string;
   private caps = new Set<string>();

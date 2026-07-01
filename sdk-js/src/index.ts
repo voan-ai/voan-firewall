@@ -21,7 +21,7 @@ export type { LLM, JudgeOpts } from "./judge.ts";
 export { guardAiSdkTools, guardOpenAIDispatch, guardCallables } from "./adapters.ts";
 export { Plan, PlanStep } from "./plan.ts";
 export type { PlanStepSpec } from "./plan.ts";
-export { AutoGuard, guardLangchainAuto, isSideEffect } from "./auto.ts";
+export { AutoGuard, guardLangchainAuto, isSideEffect, capabilityAgent } from "./auto.ts";
 export { Capsule, CapabilityEngine, Denied, TRUSTED, UNTRUSTED, ANY } from "./capability.ts";
 export { RuleOfTwo, EXTERNAL, SENSITIVE } from "./rule_of_two.ts";
 export { TaintTracker } from "./taint.ts";
