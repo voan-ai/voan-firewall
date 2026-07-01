@@ -222,6 +222,13 @@ python eval/run_eval.py                # reproduce the eval numbers above
   `Firewall(egress_allowlist=["acme.com"])` blocks any action referencing a domain
   **or raw IP** you didn't approve — look-alike exfil destinations and SSRF to
   cloud-metadata / internal IPs the goal-based judge can't tell apart.
+- **Plan-then-execute** ([`plan.py`](voan/plan.py)) — the strongest tier for
+  *in-domain* hijacks (a `send_money` that pays a bill vs. one that pays an attacker
+  look identical to a judge). Commit the intended actions **before** untrusted data:
+  `fw.set_plan([{"tool": "send_money", "recipient": payee}, ...])`. Voan then runs
+  only those (each once, recipient optionally pinned) and blocks anything an
+  injection adds or alters — **deterministic, no LLM call**. On AgentDojo it cuts
+  in-domain false positives ~5× vs the judge (see [BENCHMARK.md](BENCHMARK.md)).
 - **Audit + dashboard** — JSONL trail + live WebSocket feed.
 
 ## Data handling & threat model

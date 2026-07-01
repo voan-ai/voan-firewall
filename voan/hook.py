@@ -35,11 +35,23 @@ class Firewall:
         # not on this list (catches look-alike destinations the judge can't).
         self.egress_allowlist = egress_allowlist
         self.session = Session()
+        self.plan = None              # optional plan-then-execute allowlist
 
     def set_goal(self, goal):
         """Tell the firewall what the user actually asked for, so the LLM judge
         can spot actions that drift from it (hijacks). Resets the trace."""
         self.session = Session(goal=goal)
+        return self
+
+    def set_plan(self, steps):
+        """Commit the list of actions the agent INTENDS to take, BEFORE it reads
+        any untrusted data. Voan then allows only these (each consumed once) and
+        blocks anything an injection tries to add or alter. A step is a tool name,
+        or {"tool": ..., "recipient": ...} to pin an argument. Plan mode takes the
+        place of the judge for as long as a plan is set; call set_plan(None) to
+        clear it. See voan/plan.py."""
+        from .plan import Plan
+        self.plan = Plan(steps) if steps is not None else None
         return self
 
     def check(self, tool, args) -> Verdict:
@@ -57,8 +69,16 @@ class Firewall:
         def wrapped(*args, **kwargs):
             action = Action(tool=tool, args=self._bind(fn, args, kwargs),
                             agent=self.agent)
-            verdict = self._egress(action, self.policy.evaluate(action))
-            verdict = self._judge(action, verdict)
+            base = self._egress(action, self.policy.evaluate(action))
+            if self.plan is not None:
+                # Plan-then-execute: planned actions run; off-plan actions fall to
+                # the judge if one is configured (it backstops an incomplete plan
+                # and still blocks injected drift), else are hard-blocked.
+                verdict = self._plan(action, base)
+                if verdict.rule == "off-plan" and self.judge is not None:
+                    verdict = self._judge(action, base)
+            else:
+                verdict = self._judge(action, base)
             self.audit.record(action, verdict)
             self._gate(action, verdict)
             result = fn(*args, **kwargs)
@@ -79,6 +99,17 @@ class Firewall:
                            severity="High",
                            reason=f"egress to non-allowlisted destination '{bad}'")
         return verdict
+
+    def _plan(self, action, verdict):
+        """Plan-then-execute tier: an action is allowed only if it was in the
+        committed plan (and consumes that step). Anything an injection added or
+        altered is off-plan and blocked. Hard rule BLOCKs still stand as a floor."""
+        if verdict.decision == Decision.BLOCK:
+            return verdict
+        if self.plan.allows(action):
+            return verdict
+        return Verdict(Decision.BLOCK, rule="off-plan", code="AGT", severity="High",
+                       reason="action was not in the committed plan")
 
     def _judge(self, action, verdict):
         """Second tier: the LLM judge may ESCALATE a rule verdict to BLOCK when an

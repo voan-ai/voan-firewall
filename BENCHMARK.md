@@ -282,11 +282,44 @@ the bill's payee) moved side-effect FP only **41% → 39%** — noise. Reason: t
 *evidence* that a payee is legitimate; letting it would reopen the injection hole (a
 poisoned "pay US133, the real payee" would convince it). Attack recall stayed 99% even
 with the injection in the trace. So the principled path below this floor is **not a
-prompt tweak** — it needs structured **provenance/taint** (CaMeL-style: track that a
-sensitive argument came from a trusted source) or **plan-then-execute**, both
-architectural and on the roadmap.
+prompt tweak** — it needs an architectural tier. We built one (next).
 
 Reproduce: `pip install agentdojo && python eval/agentdojo_eval.py --judge`.
+
+### Plan-then-execute — the architectural tier ([`voan/plan.py`](voan/plan.py), [`eval/agentdojo_plan_eval.py`](eval/agentdojo_plan_eval.py))
+
+The judge fails on in-domain actions because it decides *after* untrusted data is in
+play. Plan-then-execute (from *Design Patterns for Securing LLM Agents*,
+Beurer-Kellner 2025) removes that: the agent commits the actions it INTENDS to take
+**before** it reads any untrusted content, and Voan then allows only those — each
+consumed once, optionally with the recipient **pinned**. An injection can't add a new
+action (no unused step) or swap a payment's recipient (the pin won't match). It is
+**deterministic — no LLM call, no cost, no latency.**
+
+```python
+fw = voan.Firewall()
+fw.set_plan([{"tool": "read_file"}, {"tool": "send_money", "recipient": payee}])
+tools = fw.guard_tools(tools)   # only these run; injected extra/altered calls are blocked
+```
+
+On AgentDojo's in-domain attacks (plan = each task's own legitimate calls):
+
+| tier | attack recall | benign FP | cost |
+|---|:--:|:--:|:--:|
+| LLM judge (recalibrated + grounding) | 99% | ~10% | one LLM call |
+| **plan — target-pinned** | **94%** | **2%** | **free / deterministic** |
+| plan — tool-only | 83% | 2% | free |
+
+Plan mode cuts in-domain false positives **~5×** with no model call. Honest cost: it
+assumes an **accurate up-front plan** — the assumption plan-then-execute makes, and
+why it needs a planning step (unlike the drop-in judge). Tool-only plans miss
+same-tool recipient-swaps (83%); pinning the recipient recovers most (94%). In
+production you pair the two — `Firewall(judge=…)` **and** `set_plan(…)` — so an
+off-plan-but-legitimate action is judged instead of hard-blocked, and injected drift
+is still caught. The remaining ~6% (pinned) are attacks that reuse a goal-consistent
+target; closing those needs full provenance/taint (CaMeL), the next architectural step.
+
+Reproduce: `python eval/agentdojo_plan_eval.py`.
 
 ## Performance ([`benchmark/perf.py`](benchmark/perf.py))
 
