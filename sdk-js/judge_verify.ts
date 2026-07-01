@@ -87,6 +87,22 @@ function stub(reply: string) {
     && !sentPrompt.includes("4111 1111 1111 1111") && sentPrompt.includes("[REDACTED-NUM]"));
 }
 
+// 7) Target-grounding: a side effect whose recipient is named in the goal is
+//    allowed WITHOUT the LLM (deterministic, provenance-lite) — parity with Python.
+{
+  const s = stub('{"decision":"block","reason":"should be short-circuited"}');
+  const j = new LLMJudge({ llm: s.llm });
+  const grounded = await j.evaluate("Please refund GB29NWBK60161331926819 for the return",
+    { tool: "send_money", args: { recipient: "GB29NWBK60161331926819", amount: 5 }, agent: "t", ts: 0 }, []);
+  chk("grounded recipient allowed without LLM", grounded?.decision === "allow" && s.calls.length === 0);
+
+  const s2 = stub('{"decision":"block","reason":"off-goal exfil"}');
+  const j2 = new LLMJudge({ llm: s2.llm });
+  const ungrounded = await j2.evaluate("Pay the December electricity bill",
+    { tool: "send_money", args: { recipient: "US133000000121212121212", amount: 999 }, agent: "t", ts: 0 }, []);
+  chk("ungrounded recipient goes to judge -> block", ungrounded?.decision === "block" && s2.calls.length === 1);
+}
+
 // 7) No backend -> judge is available:false and a no-op (rule verdict stands).
 {
   const fw = new Firewall({ agent: "t", judge: new LLMJudge({ llm: null }) });

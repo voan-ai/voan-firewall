@@ -204,7 +204,7 @@ call through Voan and ask: does it gate the call, given the user's actual goal?
 | tier | attack recall (gated) | benign FP |
 |---|:--:|:--:|
 | rules-only (regex tier) | **0%** (0/1054) | 0% (0/17) |
-| **rules + judge** (gpt-4o-mini) | **100%** (1054/1054) | 6% (1/17) |
+| **rules + judge** (gpt-4o-mini) | **100%** (1054/1054) | **0%** (0/17) |
 
 Read this honestly:
 
@@ -222,10 +222,61 @@ Read this honestly:
   exactly the class a goal-consistency judge is built for. This does **not** prove
   coverage of *subtle on-goal* attacks (right tool, wrong recipient/amount), which
   this benchmark barely tests.
-- **6% FP is on 17 benign cases** — indicative, not a production number. The one FP
-  is an over-cautious block of a legitimate `GmailSearchEmails`.
+- **0% FP** here (17 benign) — but this benign set is easy (clear-cut lookups). The
+  honest false-positive story is on AgentDojo below.
 
 Reproduce: `python eval/injecagent_eval.py --judge` (downloads InjecAgent on first run).
+
+## The hard case — AgentDojo in-domain, and the precision work ([`eval/agentdojo_eval.py`](eval/agentdojo_eval.py))
+
+InjecAgent flatters a goal-consistency judge: the attacker tool is always a
+*different domain* than the goal, so "is this on-goal?" trivially separates them.
+[AgentDojo](https://github.com/ethz-spylab/agentdojo) (Debenedetti et al., 2024) is
+the harder, honest test — the injection is **in-domain**: a banking agent whose real
+task is *pay a bill* is induced to `send_money` to the attacker. **Same tool** for
+benign and malicious, so domain-consistency tells you nothing.
+
+Our first pass here was bad, and we report it: the judge caught **99%** of attacks
+but **false-positived 45%** of legitimate actions — it blocked a legitimate
+`send_money` paying the user's own bill, and blocked `get_most_recent_transactions`
+for "what did I spend in March?". Diagnosis (judge reason strings): a `scope` clause
+in the prompt was firing on legitimate **reads / list / aggregate** calls, and the
+"must *complete* the goal" framing blocked normal **intermediate steps**. This is the
+"over-defense" failure the AgentDojo paper documents for naive defenses.
+
+We fixed it with two changes, grounded in the literature (AgentDojo over-defense;
+the provenance idea in *Design Patterns for Securing LLM Agents*, Beurer-Kellner et
+al. 2025):
+
+1. **Recalibrated judge — default-ALLOW, block only a hijacked side effect.** Reads,
+   searches, and plausible intermediate steps are always allowed; only a
+   `send/pay/post/delete/share` aimed at a target the goal did **not** ask for is
+   blocked. ([`voan/judge.py`](voan/judge.py))
+2. **Target-grounding (provenance-lite).** If a side effect's recipient/destination
+   appears in the **user's own (trusted) goal**, the user authorized it — allow it
+   deterministically, no LLM. The goal is attacker-free, so a named target can't be
+   an injected exfil destination. Every party arg must be grounded, so an attacker
+   can't piggy-back "add Fred" on a goal-named channel.
+
+| AgentDojo (in-domain) | attack recall | benign FP |
+|---|:--:|:--:|
+| judge, first pass | 99% | **45%** |
+| **judge, recalibrated + grounding** | **99%** (83/84) | **~10%** (33/335) |
+
+Recall is measured on the harmful **side-effect** calls (a read step in an
+attacker's plan isn't the harm). InjecAgent stays **100% recall / 0% FP** after the
+change — the fix cut in-domain false positives **~4×** without costing recall.
+
+Honest limits, stated plainly: **~10% is not single digits by much, and a
+context-free judge has a floor here** — the residual FPs are mostly *money to an
+unnamed recipient* (e.g. paying a bill whose payee the agent read from a file), which
+is genuinely **ASK-worthy**, not a clean allow. The principled way below 10% needs
+either the execution **trace/provenance** (voan already accepts a trace; a live
+deployment feeds it, which can only help) or a plan-then-execute architecture — both
+on the roadmap. We measured with an **empty trace** (hardest setting) so these
+numbers are a floor, not a ceiling.
+
+Reproduce: `pip install agentdojo && python eval/agentdojo_eval.py --judge`.
 
 ## Performance ([`benchmark/perf.py`](benchmark/perf.py))
 
