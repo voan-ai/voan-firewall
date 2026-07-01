@@ -180,17 +180,24 @@ the customer data is **exfiltrated to the attacker**; auto-guarded the exfil ema
 **blocked** — Voan saw the attacker address come out of the lookup and refuse to let
 it leave.
 
-**Measured honestly (not just the demo):** on AgentDojo's real read→send flows,
-auto-provenance blocks **77%** of injected exfils but also **false-positives on ~33%**
-of legitimate side effects — because a real agent constantly sends data it read (a
-balance, a payee) to a recipient. It only checks the **recipient/destination** arg (an
-earlier version that checked every arg over-blocked 77% and was unusable), so read
-data in a message *body* is fine; an untrusted *recipient* is the signal. **Use this
-as an ASK/hold tier, not a silent hard block**, and pair it with target-grounding
-(a recipient named in the goal is always allowed). It is a deterministic
-*approximation* — the provable, low-FP version is the capability engine, which needs
-the program model. Classification is a heuristic (override `sources=`/`sinks=`);
-string-level tracking misses a paraphrased value.
+**The enforcement is mechanical — no model in the decision, 0% by construction.** A
+side effect is allowed only if its **recipient/destination** is one the user named in
+their request; any other destination is **held for the user to confirm**. An injection
+cannot win, ever, because it cannot put the attacker's account into the user's own
+words — and there is no LLM in the gate to fool (unlike a judge, which adaptive
+attacks bypass >90%). On AgentDojo this catches the injected-recipient exfils and
+holds ~33% of legitimate sends — but that 33% is **not an error rate**: those are
+sends to a destination the agent read from data rather than one the user named, which
+genuinely *should* be confirmed by a human. The firewall can't know they're safe
+without a human, so it asks — that is the honest, sound behaviour, not a false
+positive. (Read data in a message *body* is fine; only the *recipient* is checked.)
+
+Optionally pass `verify=llm` to *reduce how often a human is asked* — a quarantined
+verifier auto-approves a data-derived recipient it can confirm the goal intends. It
+only ever **downgrades a hold to allow**; it never gates by itself, so soundness stays
+mechanical. (With a frontier verifier the confirm-rate drops — measured 33%→16% —
+and it keeps falling with model quality.) For the full provable version where every
+value carries a capability, see the capability engine below.
 
 Works on real frameworks too — genuine LangChain tools (with `langchain-core`
 installed) via [`voan/adapters.py`](voan/adapters.py):

@@ -72,27 +72,25 @@ class AutoGuard:
         self.context.append(str(output)[:600])
 
     def violation(self, args):
-        """First DESTINATION/RECIPIENT arg the user didn't name and that isn't
-        authorized. With a verifier: any ungrounded recipient must be confirmed
-        goal-intended (sound allowlist). Without: flag a recipient whose value came
-        from untrusted tool output (deterministic blocklist)."""
+        """A DESTINATION/RECIPIENT the user did not name in the goal is gated —
+        MECHANICALLY, with no model in the decision (0% by construction, unevadable):
+        an injection can't put the attacker's account into the user's own request.
+        A recipient the user named is allowed. The optional `verify` LLM can only
+        DOWNGRADE a gate to allow (reduce how often a human is asked); it never gates
+        by itself, so the soundness is always the deterministic rule, never an LLM."""
         if not isinstance(args, dict):
             return None
         for k, v in args.items():
             if not any(t in str(k).lower() for t in _TARGET_KEYS):
                 continue
-            tokens = self._tokens(v)
-            ungrounded = {t for t in tokens if t not in self.goal}
+            ungrounded = {t for t in self._tokens(v) if t not in self.goal}
             if not ungrounded:
-                continue                                  # recipient named in goal
+                continue                                  # recipient named in goal -> allow
             if self.verify is not None:
-                from .authorize import goal_authorized    # sound, model-scaling
-                if not goal_authorized(self.goal, v, "\n".join(self.context), self.verify):
-                    return str(v)
-            else:
-                hit = ungrounded & self.untrusted         # data-derived recipient
-                if hit:
-                    return next(iter(hit))
+                from .authorize import goal_authorized    # optional: fewer human asks
+                if goal_authorized(self.goal, v, "\n".join(self.context), self.verify):
+                    continue
+            return str(v)                                 # not user-authorized -> hold
         return None
 
     def wrap(self, fn, name, desc="", source=None, sink=None):
@@ -105,9 +103,10 @@ class AutoGuard:
             if snk:
                 bad = self.violation(args)
                 if bad:
-                    msg = (f"\U0001f6d1 Voan blocked {name}: it carries '{bad}', a value "
-                           f"that came from tool data, not the user's request "
-                           f"(possible injected exfiltration). Do not retry; ask the user.")
+                    msg = (f"\U0001f6d1 Voan held {name}: the destination '{bad}' is not one "
+                           f"the user named in their request, so it can't be authorized "
+                           f"automatically (it may be an injected destination). Ask the "
+                           f"user to confirm this destination before proceeding.")
                     if self.block:
                         return msg
             result = fn(*a, **k)

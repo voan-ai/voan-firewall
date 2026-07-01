@@ -17,7 +17,7 @@ def test_provenance_blocks_untrusted_value_at_sink():
     send = g.wrap(lambda to, body="": f"sent to {to}", "send_email")
     check(order_id="ORD-1001")                                  # taints the corpus
     out = send(to="refund-recovery@evil-collector.com")
-    assert isinstance(out, str) and out.startswith("\U0001f6d1 Voan blocked")
+    assert isinstance(out, str) and out.startswith("\U0001f6d1 Voan held")
 
 
 def test_goal_named_value_is_allowed():
@@ -28,10 +28,13 @@ def test_goal_named_value_is_allowed():
     assert send(to="alice@acme.com") == "sent alice@acme.com"   # user named it -> ok
 
 
-def test_value_not_from_a_source_is_allowed():
-    g = AutoGuard(goal="do a task")
+def test_ungrounded_recipient_is_held_mechanically():
+    # mechanical soundness: a recipient the user didn't name is held regardless of
+    # taint — no model in the decision, 0% by construction.
+    g = AutoGuard(goal="email the report to bob@acme.com")
     send = g.wrap(lambda to, body="": "sent", "send_email")
-    assert send(to="whoever@wherever.com") == "sent"            # nothing tainted yet
+    assert send(to="bob@acme.com") == "sent"                        # user named it -> allow
+    assert send(to="whoever@wherever.com").startswith("\U0001f6d1 Voan held")  # not named -> hold
 
 
 def test_guard_langchain_auto_wraps_func():
@@ -42,7 +45,7 @@ def test_guard_langchain_auto_wraps_func():
                               func=lambda to: f"to {to}")
     tools, g = guard_langchain_auto([t, s], goal="check order")
     t.func(order_id="1")
-    assert s.func(to="evil-collector.com").startswith("\U0001f6d1 Voan blocked")
+    assert s.func(to="evil-collector.com").startswith("\U0001f6d1 Voan held")
 
 
 def test_only_target_args_are_checked():
@@ -55,14 +58,14 @@ def test_only_target_args_are_checked():
     # untrusted address is only in the BODY, recipient is the user-named one -> allowed
     assert send(to="alice@acme.com", body="attacker@evil.com was in the doc") == "sent alice@acme.com"
     # untrusted address IS the recipient -> blocked
-    assert send(to="attacker@evil.com").startswith("\U0001f6d1 Voan blocked")
+    assert send(to="attacker@evil.com").startswith("\U0001f6d1 Voan held")
 
 
 def test_manual_override_of_classification():
     g = AutoGuard(goal="g")
     w = g.wrap(lambda to: "y", "get_thing", sink=True, source=False)   # forced sink
     g.untrusted.add("secretvalue")
-    assert w(to="secretvalue").startswith("\U0001f6d1 Voan blocked")   # untrusted target
+    assert w(to="secretvalue").startswith("\U0001f6d1 Voan held")   # untrusted target
 
 
 def test_goal_authorized_verifier_allows_and_blocks():
@@ -83,4 +86,4 @@ def test_autoguard_verify_mode_is_sound_allowlist():
 
     deny = AutoGuard(goal="pay the invoice", verify=lambda s, u: "NO")
     send2 = deny.wrap(lambda to: "sent", "send_money")
-    assert send2(to="US133-attacker").startswith("\U0001f6d1 Voan blocked")  # verifier says no
+    assert send2(to="US133-attacker").startswith("\U0001f6d1 Voan held")  # verifier says no
