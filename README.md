@@ -116,15 +116,16 @@ pip install "voan[proxy-http]"   # + serve the proxy over HTTP (mcp, uvicorn, st
 (Clone the repo if you want to run the `demo/` and `eval/` scripts below.)
 
 A TypeScript/JS **port** lives in [`sdk-js/`](sdk-js/) (Node 22.6+, native TS) at
-**full three-tier parity with Python** — the hardened regex rules, the egress
-allowlist (`new Firewall({ egressAllowlist: ["acme.com"] })`), and the LLM
-intent-vs-hijack judge (`new Firewall({ judge: new LLMJudge() }); fw.setGoal(...)`,
-with `openaiLlm()` / `ollamaLlm()` / any `async (system, user) => string` backend).
-It ships the **same framework adapters** as Python (`guardAiSdkTools` for the
-Vercel AI SDK, `guardOpenAIDispatch`, `guardCallables` — a block returns an
-observation string so the agent defers instead of crashing), and carries the
-**same real-agent proof** — a genuine OpenAI function-calling agent, hijacked by
-poisoned tool output, blocked by the JS judge (0 harmful actions):
+**full parity with Python across the whole spectrum** — the hardened regex rules,
+egress allowlist, the LLM judge, framework adapters (`guardAiSdkTools`,
+`guardOpenAIDispatch`, `guardCallables`), plan-then-execute (`Plan`), the mechanical
+zero-config guard (`guardLangchainAuto` — grounding + Rule of Two), and the full
+CaMeL/FIDES core: the **capability engine** (`CapabilityEngine`, `Capsule`) with its
+per-value integrity + confidentiality invariants and the interpreter, plus
+`RuleOfTwo`, `TaintTracker`, `FlowMonitor`, `quarantinedLlm`, and the
+`deriveCapabilityProgram` planner. Six parity suites (`*_verify.ts`) run in CI. It
+carries the **same real-agent proof** — a genuine OpenAI function-calling agent,
+hijacked by poisoned tool output, blocked (0 harmful actions):
 `node sdk-js/examples/real_agent_attack.ts` (needs `OPENAI_API_KEY`). Consumed
 locally from the repo; not yet published to npm.
 
