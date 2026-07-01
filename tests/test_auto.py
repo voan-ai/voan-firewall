@@ -45,9 +45,21 @@ def test_guard_langchain_auto_wraps_func():
     assert s.func(to="evil-collector.com").startswith("\U0001f6d1 Voan blocked")
 
 
+def test_only_target_args_are_checked():
+    # untrusted data in a body/subject is fine (legit agents do this constantly);
+    # only an untrusted RECIPIENT/destination is the exfil signal.
+    g = AutoGuard(goal="summarize the doc and send it to alice@acme.com")
+    read = g.wrap(lambda q: "for details contact attacker@evil.com", "read_doc")
+    send = g.wrap(lambda to, body="": f"sent {to}", "send_email")
+    read(q="x")
+    # untrusted address is only in the BODY, recipient is the user-named one -> allowed
+    assert send(to="alice@acme.com", body="attacker@evil.com was in the doc") == "sent alice@acme.com"
+    # untrusted address IS the recipient -> blocked
+    assert send(to="attacker@evil.com").startswith("\U0001f6d1 Voan blocked")
+
+
 def test_manual_override_of_classification():
     g = AutoGuard(goal="g")
-    # force a normally-source-looking tool to be treated as a sink
-    w = g.wrap(lambda x: "y", "get_thing", sink=True, source=False)
+    w = g.wrap(lambda to: "y", "get_thing", sink=True, source=False)   # forced sink
     g.untrusted.add("secretvalue")
-    assert w(x="secretvalue").startswith("\U0001f6d1 Voan blocked")
+    assert w(to="secretvalue").startswith("\U0001f6d1 Voan blocked")   # untrusted target

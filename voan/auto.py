@@ -21,6 +21,13 @@ from .taint import is_side_effect
 _SOURCE_HINTS = ("read", "fetch", "search", "list", "email", "web", "file", "inbox",
                  "message", "review", "lookup", "load", "browse", "get", "retrieve",
                  "scrape", "content", "doc", "page", "mail", "calendar", "note")
+# Args that name WHERE a side effect goes. Only these are checked — a legit agent
+# constantly puts read data in a body/subject; the hijack signal is untrusted data
+# in the RECIPIENT/DESTINATION, not in the payload. (Checking every arg over-blocks
+# ~77% of legit actions; checking only the target is the usable design.)
+_TARGET_KEYS = ("recipient", "receiver", "payee", "to", "dest", "destination",
+                "address", "account", "iban", "email", "channel", "url", "user",
+                "member", "guest", "participant", "contact")
 _TOKEN = re.compile(r"[A-Za-z0-9@._+\-]{4,}")
 _STOP = {"true", "false", "null", "none", "http", "https", "status", "amount",
          "true.", "this", "that", "with", "from", "your", "please", "order",
@@ -57,10 +64,17 @@ class AutoGuard:
         self.untrusted |= self._tokens(output)
 
     def violation(self, args):
-        """First untrusted token carried by a sink's args that the user didn't name."""
-        for tok in self._tokens(args):
-            if tok in self.untrusted and tok not in self.goal:
-                return tok
+        """First untrusted token in a DESTINATION/RECIPIENT arg that the user didn't
+        name — i.e. the side effect is being sent to a target that came from tool
+        data (the exfil signal), not merely carrying read data in its body."""
+        if not isinstance(args, dict):
+            return None
+        for k, v in args.items():
+            if not any(t in str(k).lower() for t in _TARGET_KEYS):
+                continue
+            for tok in self._tokens(v):
+                if tok in self.untrusted and tok not in self.goal:
+                    return tok
         return None
 
     def wrap(self, fn, name, desc="", source=None, sink=None):

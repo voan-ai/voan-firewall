@@ -178,9 +178,19 @@ On a genuine `create_agent` + gpt-4o-mini agent hijacked by a poisoned order loo
 ([`examples/langchain_auto_attack.py`](examples/langchain_auto_attack.py)): unguarded
 the customer data is **exfiltrated to the attacker**; auto-guarded the exfil email is
 **blocked** — Voan saw the attacker address come out of the lookup and refuse to let
-it leave. (Provenance catches the exfil; pair it with the judge to also catch a
-goal-inconsistent refund. Classification is a heuristic — override with
-`sources=`/`sinks=`; string-level tracking can miss a paraphrased value.)
+it leave.
+
+**Measured honestly (not just the demo):** on AgentDojo's real read→send flows,
+auto-provenance blocks **77%** of injected exfils but also **false-positives on ~33%**
+of legitimate side effects — because a real agent constantly sends data it read (a
+balance, a payee) to a recipient. It only checks the **recipient/destination** arg (an
+earlier version that checked every arg over-blocked 77% and was unusable), so read
+data in a message *body* is fine; an untrusted *recipient* is the signal. **Use this
+as an ASK/hold tier, not a silent hard block**, and pair it with target-grounding
+(a recipient named in the goal is always allowed). It is a deterministic
+*approximation* — the provable, low-FP version is the capability engine, which needs
+the program model. Classification is a heuristic (override `sources=`/`sinks=`);
+string-level tracking misses a paraphrased value.
 
 Works on real frameworks too — genuine LangChain tools (with `langchain-core`
 installed) via [`voan/adapters.py`](voan/adapters.py):
