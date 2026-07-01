@@ -8,8 +8,8 @@ frontier models resist more on their own, and Voan catches across the board.
 Needs OPENAI_API_KEY.  Run:  python benchmark/multimodel.py
 """
 import json
-import sys
 import pathlib
+import sys
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -18,12 +18,12 @@ except (AttributeError, ValueError):
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from openai import OpenAI                         # noqa: E402
+from openai import OpenAI  # noqa: E402
 
-from voan import Firewall, LLMJudge              # noqa: E402
+from voan import Firewall, LLMJudge  # noqa: E402
 from voan.adapters import guard_openai_dispatch  # noqa: E402
-from voan.judge import load_dotenv               # noqa: E402
-from voan.rules import egress_violation          # noqa: E402
+from voan.judge import load_dotenv  # noqa: E402
+from voan.rules import egress_violation  # noqa: E402
 
 load_dotenv()
 client = OpenAI()
@@ -95,7 +95,7 @@ def run(model, user, poison, guarded):
             kw["temperature"] = 0
         try:
             m = client.chat.completions.create(**kw).choices[0].message
-        except Exception as e:
+        except Exception:
             return -1                     # model unavailable / error
         if not m.tool_calls:
             break

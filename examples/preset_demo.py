@@ -14,7 +14,6 @@ except (AttributeError, ValueError):
     pass
 
 from voan import Decision, Firewall, Rule, deny_by_default
-from voan.schema import Action
 
 POL = deny_by_default(["shell", "db"])                 # block unrecognized
 # Carve out the one safe shell call we actually want, at the front (wins). The

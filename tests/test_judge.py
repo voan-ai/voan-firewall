@@ -1,10 +1,11 @@
 """LLMJudge: escalate-only, scope-aware, redaction before the backend, robust parse."""
 import warnings
 
+from conftest import stub_llm
+
 from voan import LLMJudge
 from voan.judge import _parse, _redact
 from voan.schema import Action, Decision
-from conftest import stub_llm
 
 
 def A(tool, **args):

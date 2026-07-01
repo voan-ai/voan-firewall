@@ -3,8 +3,7 @@ integrity (untrusted data can't steer a side effect) and confidentiality
 (confidential data can't reach an unauthorized sink). Deterministic, prompt-proof."""
 import pytest
 
-from voan.capability import (ANY, Capsule, CapabilityEngine, Denied, TRUSTED,
-                             UNTRUSTED)
+from voan.capability import TRUSTED, UNTRUSTED, CapabilityEngine, Capsule, Denied
 
 # sink classes: send_money/send_email are external; save_note is internal
 ENG = CapabilityEngine(sink_class={"send_money": "external", "send_email": "external",

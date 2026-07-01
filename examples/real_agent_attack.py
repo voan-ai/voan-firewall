@@ -14,8 +14,8 @@ and email the confirmation to an attacker. We run the SAME agent twice:
 Needs OPENAI_API_KEY in .env (uses gpt-4o-mini).  Run:  python examples/real_agent_attack.py
 """
 import json
-import sys
 import pathlib
+import sys
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -26,7 +26,6 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from openai import OpenAI  # noqa: E402
 
-import voan  # noqa: E402
 from voan import BlockedAction, Firewall, LLMJudge  # noqa: E402
 from voan.judge import load_dotenv  # noqa: E402
 

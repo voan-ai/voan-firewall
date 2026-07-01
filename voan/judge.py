@@ -24,7 +24,7 @@ import re
 import urllib.request
 import warnings
 
-from .schema import Action, Decision, Verdict
+from .schema import Decision, Verdict
 
 # Mask obvious secrets / card numbers before they reach an external LLM. The
 # destination, tool name and action shape survive, so the judge can still flag

@@ -14,8 +14,8 @@ Run the dashboard first to watch it live:
     uvicorn server.app:app --port 8088   # then open http://127.0.0.1:8088
     python demo/demo_agent.py
 """
-import sys
 import pathlib
+import sys
 
 # Windows consoles default to cp949/cp1252 and choke on the emoji status icons;
 # force UTF-8 so the demo prints cleanly everywhere.

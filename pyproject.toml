@@ -27,8 +27,8 @@ examples = ["openai>=1.0", "mcp>=1.0"]
 mcp = ["mcp>=1.0"]
 # Only needed to SERVE the transparent proxy over HTTP (voan-mcp-proxy --serve-http).
 proxy-http = ["mcp>=1.0", "uvicorn>=0.29", "starlette>=0.37"]
-# Test suite (pytest). `pip install -e ".[dev,mcp]"` then `pytest`.
-dev = ["pytest>=7"]
+# Dev tooling: tests, coverage, lint. `pip install -e ".[dev,mcp]"` then `pytest`.
+dev = ["pytest>=7", "pytest-cov>=4", "ruff>=0.6"]
 
 [project.urls]
 Homepage = "https://github.com/voan-ai/voan-firewall"
@@ -45,3 +45,16 @@ packages = ["voan"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]   # pycodestyle, pyflakes, isort
+[tool.ruff.lint.per-file-ignores]
+# Benchmarks/evals/demos favour compact one-liners and wide output strings; the
+# library code (voan/) and the test suite stay strictly clean.
+"benchmark/*" = ["E501", "E701", "E702", "E731", "E741", "F841"]
+"eval/*" = ["E501", "E701", "E702", "E731", "E741"]
+"examples/*" = ["E501", "E702"]
+"demo/*" = ["E501"]
+"tests/*" = ["E701", "E702", "E731"]

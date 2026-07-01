@@ -22,8 +22,8 @@ the in-domain regime, not a universal guarantee.
 """
 import argparse
 import concurrent.futures as cf
-import sys
 import pathlib
+import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 

@@ -13,8 +13,8 @@ still isn't in the user's goal, no matter how the injection is phrased.
 
     python benchmark/adaptive_attack.py            # needs OPENAI_API_KEY
 """
-import sys
 import pathlib
+import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 try:

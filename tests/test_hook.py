@@ -1,10 +1,10 @@
 """Firewall hook: the gate. allow runs, block/denied-ask raise, monitor logs only,
 egress + judge tiers wire in, the judge only escalates."""
 import pytest
+from conftest import stub_llm
 
 from voan import Firewall, LLMJudge
-from voan.schema import BlockedAction, Decision
-from conftest import stub_llm
+from voan.schema import BlockedAction
 
 
 def test_allow_runs_and_returns():

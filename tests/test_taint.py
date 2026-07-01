@@ -3,7 +3,7 @@ and was not named in the goal is held (ASK); goal-named targets and reads are no
 import pytest
 
 from voan import Firewall
-from voan.schema import Action, BlockedAction, Decision
+from voan.schema import Action, BlockedAction
 from voan.taint import TaintTracker
 
 
@@ -30,8 +30,8 @@ def test_tracker_ignores_goal_named_target():
 def test_tracker_ignores_reads_and_unknown_values():
     t = TaintTracker()
     t.observe("channel general has 20 messages")
-    assert t.bad_target(A("get_channel", channel="general"), "read general") is None  # read
-    assert t.bad_target(A("send_money", recipient="GB999"), "pay bill") is None        # not in corpus
+    assert t.bad_target(A("get_channel", channel="general"), "read general") is None   # a read
+    assert t.bad_target(A("send_money", recipient="GB999"), "pay bill") is None  # not in corpus
 
 
 def test_firewall_taint_holds_injected_recipient():

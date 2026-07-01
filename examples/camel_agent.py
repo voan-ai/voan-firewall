@@ -3,8 +3,8 @@ email, the capability interpreter runs the agent's program, and an injected paym
 is denied BY CONSTRUCTION — even when the LLM is fooled, because the enforcement has
 no model in it. Needs OPENAI_API_KEY.  python examples/camel_agent.py
 """
-import sys
 import pathlib
+import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 try:

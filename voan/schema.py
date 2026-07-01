@@ -5,9 +5,9 @@ A Verdict is the policy engine's ruling on that action. BlockedAction is raised
 in the agent's own process when an action is denied — the firewall sits inline,
 so a blocked call never reaches the real tool.
 """
-from dataclasses import dataclass, field, asdict
-from enum import Enum
 import time
+from dataclasses import asdict, dataclass, field
+from enum import Enum
 
 
 class Decision(str, Enum):

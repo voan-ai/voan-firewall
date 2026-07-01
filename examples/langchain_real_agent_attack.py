@@ -13,8 +13,8 @@ Needs OPENAI_API_KEY in .env.  Run:
     pip install "voan[examples]" langchain langchain-openai langgraph
     python examples/langchain_real_agent_attack.py
 """
-import sys
 import pathlib
+import sys
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -23,13 +23,13 @@ except (AttributeError, ValueError):
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from langchain.agents import create_agent       # noqa: E402
-from langchain_core.tools import tool           # noqa: E402
-from langchain_openai import ChatOpenAI         # noqa: E402
+from langchain.agents import create_agent  # noqa: E402
+from langchain_core.tools import tool  # noqa: E402
+from langchain_openai import ChatOpenAI  # noqa: E402
 
-from voan import Firewall, LLMJudge             # noqa: E402
-from voan.adapters import guard_langchain       # noqa: E402
-from voan.judge import load_dotenv              # noqa: E402
+from voan import Firewall, LLMJudge  # noqa: E402
+from voan.adapters import guard_langchain  # noqa: E402
+from voan.judge import load_dotenv  # noqa: E402
 
 load_dotenv()
 MODEL = ChatOpenAI(model="gpt-4o-mini", temperature=0)

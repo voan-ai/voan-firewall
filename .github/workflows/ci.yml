@@ -6,6 +6,22 @@ on:
   pull_request:
 
 jobs:
+  # Static quality gates: lint (ruff) + strict type-check of the shipped JS library.
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Ruff lint
+        run: pip install ruff && ruff check .
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: TypeScript strict type-check (library)
+        run: cd sdk-js && npm install -D typescript @types/node && npx tsc --noEmit
+
   # Core test suite across every Python the package claims to support (>=3.9).
   python-test:
     runs-on: ubuntu-latest
@@ -19,9 +35,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install SDK + test deps
-        run: pip install -e ".[dev]"
-      - name: Unit tests (no API key needed — judge is stubbed)
-        run: pytest
+        run: pip install -e ".[dev]" pytest-cov
+      - name: Unit tests + coverage (no API key needed — judge is stubbed)
+        run: pytest --cov=voan --cov-report=term-missing --cov-fail-under=75
       - name: Demo blocks the attacks end-to-end
         run: python demo/demo_agent.py
 

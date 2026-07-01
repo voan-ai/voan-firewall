@@ -20,8 +20,8 @@ i.e. an accurate up-front planner. That is the assumption plan-then-execute make
 it with the judge (`Firewall(judge=..., ...); fw.set_plan(...)`) so off-plan-but-
 legitimate actions are judged instead of hard-blocked.
 """
-import sys
 import pathlib
+import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 

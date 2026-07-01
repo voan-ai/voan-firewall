@@ -4,7 +4,7 @@ import pytest
 
 from voan import Firewall
 from voan.plan import Plan
-from voan.schema import Action, BlockedAction, Decision
+from voan.schema import Action, BlockedAction
 
 
 def A(tool, **args):

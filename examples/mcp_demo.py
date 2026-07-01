@@ -10,8 +10,8 @@ the actual MCP protocol.
     pip install "voan[examples]" mcp
     python examples/mcp_demo.py
 """
-import sys
 import pathlib
+import sys
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")

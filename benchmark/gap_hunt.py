@@ -12,8 +12,8 @@ deny-by-default for config/admin tools). Needs OPENAI_API_KEY.
   Run:  python benchmark/gap_hunt.py [model]
 """
 import json
-import sys
 import pathlib
+import sys
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -22,11 +22,11 @@ except (AttributeError, ValueError):
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from openai import OpenAI                         # noqa: E402
+from openai import OpenAI  # noqa: E402
 
-from voan import Firewall, LLMJudge              # noqa: E402
+from voan import Firewall, LLMJudge  # noqa: E402
 from voan.adapters import guard_openai_dispatch  # noqa: E402
-from voan.judge import load_dotenv               # noqa: E402
+from voan.judge import load_dotenv  # noqa: E402
 
 load_dotenv()
 client = OpenAI()

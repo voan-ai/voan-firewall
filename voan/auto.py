@@ -101,7 +101,7 @@ class AutoGuard:
             if not ungrounded:
                 continue                                  # recipient named in goal -> allow
             if self.verify is not None:
-                from .authorize import goal_authorized    # optional: fewer human asks
+                from .authorize import goal_authorized  # optional: fewer human asks
                 if goal_authorized(self.goal, v, "\n".join(self.context), self.verify):
                     continue
             return str(v)                                 # not user-authorized -> hold

@@ -3,8 +3,8 @@ holds untrusted + sensitive. Deterministic — no LLM, adaptive-proof for capabi
 import pytest
 
 from voan import Firewall
-from voan.rule_of_two import RuleOfTwo, UNTRUSTED, SENSITIVE, EXTERNAL
-from voan.schema import Action, BlockedAction, Decision
+from voan.rule_of_two import EXTERNAL, SENSITIVE, UNTRUSTED, RuleOfTwo
+from voan.schema import Action, BlockedAction
 
 
 def A(tool, **args):

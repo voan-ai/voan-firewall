@@ -6,8 +6,8 @@ execute through LangChain's real `tool.invoke(...)` path. The tool calls below
 are exactly the shape a model emits in tool-calling; we script them so the demo
 is deterministic and needs no API key, but execution runs inside real LangChain.
 """
-import sys
 import pathlib
+import sys
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")

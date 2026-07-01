@@ -11,8 +11,8 @@ Full Voan = rules + egress allowlist(["acme.com","acmeshop.com"]) + judge, in th
 order (each can only escalate to BLOCK; ASK = held for a human).
 Needs OPENAI_API_KEY.  Run:  python benchmark/taxonomy.py
 """
-import sys
 import pathlib
+import sys
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -22,8 +22,8 @@ except (AttributeError, ValueError):
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from voan import Decision, LLMJudge, PolicyEngine  # noqa: E402
-from voan.rules import egress_violation            # noqa: E402
-from voan.schema import Action                      # noqa: E402
+from voan.rules import egress_violation  # noqa: E402
+from voan.schema import Action  # noqa: E402
 
 ALLOW = ["acme.com", "acmeshop.com"]
 rules = PolicyEngine()

@@ -118,7 +118,9 @@ class CapabilityEngine:
         in_caps = [v for v in args.values() if isinstance(v, Capsule)]
         combined = Capsule.combine(result, *in_caps, source=tool)
         integ = UNTRUSTED if (source or combined.integrity == UNTRUSTED) else TRUSTED
-        rd = combined.readers if readers == frozenset({ANY}) else _intersect(combined.readers, readers)
+        rd = combined.readers
+        if readers != frozenset({ANY}):
+            rd = _intersect(combined.readers, readers)
         return Capsule(result, integ, rd, tool)
 
     def guard(self, fn, tool, untrusted=True, readers=frozenset({ANY})):

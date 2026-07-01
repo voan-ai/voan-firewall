@@ -9,8 +9,8 @@ Run with the OpenAI judge (put your key in .env) or free local Ollama:
     python demo/judge_demo.py             # OpenAI if .env has a key, else Ollama
     python demo/judge_demo.py ollama      # force local phi4-mini
 """
-import sys
 import pathlib
+import sys
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -19,8 +19,7 @@ except (AttributeError, ValueError):
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-import voan  # noqa: E402
-from voan import LLMJudge, PolicyEngine, openai_llm, ollama_llm  # noqa: E402
+from voan import LLMJudge, PolicyEngine, ollama_llm, openai_llm  # noqa: E402
 from voan.schema import Action  # noqa: E402
 
 GOAL = ("Check the delivery status of order ORD-1001. "

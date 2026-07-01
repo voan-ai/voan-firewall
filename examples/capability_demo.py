@@ -9,8 +9,8 @@ persuasive the injection is. The legitimate payee, which the USER named, is trus
 and goes through. Separately, a bank balance is confidential and cannot leave via an
 external email, but can be written to an internal note.
 """
-import sys
 import pathlib
+import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 try:
@@ -18,7 +18,7 @@ try:
 except (AttributeError, ValueError):
     pass
 
-from voan.capability import CapabilityEngine, Capsule, Denied
+from voan.capability import CapabilityEngine, Denied
 
 eng = CapabilityEngine(sink_class={"send_money": "external", "send_email": "external",
                                    "save_note": "internal"})

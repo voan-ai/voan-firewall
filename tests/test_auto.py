@@ -56,7 +56,8 @@ def test_only_target_args_are_checked():
     send = g.wrap(lambda to, body="": f"sent {to}", "send_email")
     read(q="x")
     # untrusted address is only in the BODY, recipient is the user-named one -> allowed
-    assert send(to="alice@acme.com", body="attacker@evil.com was in the doc") == "sent alice@acme.com"
+    out = send(to="alice@acme.com", body="attacker@evil.com was in the doc")
+    assert out == "sent alice@acme.com"
     # untrusted address IS the recipient -> blocked
     assert send(to="attacker@evil.com").startswith("\U0001f6d1 Voan held")
 

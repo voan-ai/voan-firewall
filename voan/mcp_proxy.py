@@ -108,7 +108,8 @@ def main():
     args = sys.argv[1:]
     allow = []
     while len(args) >= 2 and args[0] == "--allow":
-        allow.append(args[1]); args = args[2:]
+        allow.append(args[1])
+        args = args[2:]
 
     serve = _serve_stdio                       # default: serve to the client over stdio
     if args and args[0] == "--serve-http":

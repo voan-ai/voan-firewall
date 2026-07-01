@@ -1,7 +1,8 @@
 """derive_plan: turn a goal + tool list into a plan-then-execute plan (stub LLM)."""
+import pytest
+
 from voan import Firewall, derive_plan
 from voan.schema import BlockedAction
-import pytest
 
 
 def stub(reply):
@@ -38,7 +39,7 @@ def test_unparseable_reply_returns_empty():
 def test_derive_capability_program_runs_safely():
     # the planning half of CaMeL: the (stub) planner emits a program; the interpreter
     # runs it and denies the untrusted-derived payment regardless of the plan.
-    from voan import CapabilityEngine, quarantined_llm, derive_capability_program, Denied
+    from voan import CapabilityEngine, Denied, derive_capability_program, quarantined_llm
     planner = stub('[{"var":"e","tool":"read_email","args":{}},'
                    '{"var":"p","tool":"extract","args":{"content":"$e","query":"payee"}},'
                    '{"tool":"send_money","args":{"recipient":"$p","amount":999}}]')

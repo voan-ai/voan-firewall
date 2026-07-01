@@ -3,8 +3,7 @@ and the real tool never runs."""
 import asyncio
 import types
 
-from voan.adapters import (guard_callables, guard_langchain, guard_mcp,
-                           guard_openai_dispatch)
+from voan.adapters import guard_callables, guard_langchain, guard_mcp, guard_openai_dispatch
 
 
 def is_block(v):

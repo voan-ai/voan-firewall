@@ -9,8 +9,8 @@ blocks the email that tries to send it OUT — deterministically, no LLM judge.
     pip install "voan[examples]" langchain langchain-openai langgraph
     python examples/langchain_auto_attack.py
 """
-import sys
 import pathlib
+import sys
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -104,8 +104,8 @@ def main():
 
     tools = make_tools()
     tools, guard = guard_langchain_auto(tools, goal=GOAL)   # the only line — zero config
-    print(f"\n  [voan auto-classified] sources vs sinks inferred from the tools; "
-          f"tracking provenance across the run")
+    print("\n  [voan auto-classified] sources vs sinks inferred from the tools; "
+          "tracking provenance across the run")
     show("AUTO-GUARDED (guard_langchain_auto, deterministic)", *run(tools))
     print()
 
