@@ -114,6 +114,19 @@ def test_interpreter_propagates_confidentiality():
     assert "exfiltration" in ei.value.reason
 
 
+def test_capability_agent_one_call_loop_is_provable():
+    # the full CaMeL loop in one call: stub planner emits the program, auto-classify
+    # does sinks/sources, the interpreter denies the untrusted-derived payment.
+    from voan import capability_agent
+    planner = lambda s, u: ('[{"var":"e","tool":"read_email","args":{}},'
+                            '{"var":"p","tool":"extract","args":{"content":"$e"}},'
+                            '{"tool":"send_money","args":{"recipient":"$p"}}]')
+    tools = {"read_email": lambda: "poison", "extract": lambda content: "US133",
+             "send_money": lambda recipient: "sent"}
+    with pytest.raises(Denied):
+        capability_agent("pay the invoice", tools, planner)
+
+
 def test_guard_threads_capabilities_end_to_end():
     # tool outputs become capsules; feeding an untrusted one into a sensitive param
     # is denied by construction — the CaMeL usage model.

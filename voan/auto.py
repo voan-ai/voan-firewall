@@ -139,6 +139,28 @@ class AutoGuard:
         return wrapped
 
 
+def capability_agent(goal, tools, llm, sink_class=None, sources=None):
+    """One call for the full, PROVABLE CaMeL loop — no hand-written program. Voan
+    derives the capability program from the trusted goal (the privileged planner),
+    auto-classifies each tool (reads = untrusted sources, side effects = external
+    sinks), and runs the program through the capability interpreter, which threads a
+    capability onto every value and refuses to let an untrusted one steer a sink.
+    `tools` = {name: fn}, `llm(system,user)->str`. Returns the interpreter env
+    (var -> Capsule); raises voan.Denied if the program violates an invariant.
+
+    This is the provable end of the spectrum: unlike the mechanical grounding guard
+    (which holds an ungrounded recipient for a human), here nothing untrusted can
+    reach a sink at all — for values that flow through the program."""
+    from .capability import CapabilityEngine
+    from .planner import derive_capability_program
+    names = list(tools)
+    sinks = {n for n in names if is_side_effect(n)}
+    sc = sink_class if sink_class is not None else {n: "external" for n in sinks}
+    srcs = sources if sources is not None else {n for n in names if n not in sinks}
+    program = derive_capability_program(goal, names, llm)
+    return CapabilityEngine(sink_class=sc).run(program, tools, sources=srcs)
+
+
 def guard_langchain_auto(tools, goal="", sources=None, sinks=None, verify=None):
     """Auto-instrument a list of LangChain tools. Voan classifies each tool and
     shares one provenance tracker across them, so an injected value read by one tool
