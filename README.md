@@ -97,7 +97,8 @@ Voan itself**: found a look-alike-destination exfil that fools the goal-based ju
 And on a **third-party benchmark we did not build** —
 [InjecAgent](https://github.com/uiuc-kang-lab/InjecAgent), 1,054 indirect-injection
 scenarios across agents/tools we never configured for — Voan's judge gates **100%**
-(1054/1054) of the induced harmful tool calls at **6% FP** on legitimate ones, while
+(1054/1054) of the induced harmful tool calls at **~6% FP** (1/17 — a single
+non-deterministic LLM run; 0–1 FP across runs) on legitimate ones, while
 the regex tier alone gates **0%** (the tools are domain-specific). That 0→100 is the
 honest shape of it: on a real agent the *judge* is the defense, and 100% holds
 because these attacks are off-goal by construction — subtle on-goal attacks are a
@@ -137,9 +138,13 @@ import voan
 tools = voan.guard(tools)      # wrap your dict/list of tool functions
 ```
 
-That one line gives you the **regex tier** (the "silently-allow 30%" column above).
-To get the full intent-vs-hijack coverage, add the judge and tell it the user's
-goal:
+That one line gives you the **regex tier** (the "silently-allow 30%" column above) — a
+signature blocklist that catches *common* RCE/DB/exfil patterns but is **evadable** on
+its own (rephrased shells, `curl | python3`, tautology-`WHERE`), so don't rely on it
+alone. For a **deterministic floor** on high-stakes tools, flip to deny-by-default —
+`voan.guard(tools, policy=voan.deny_by_default(["shell", "db"]))` — which blocks any
+*unrecognized* shell/db action while your own allow-rules still win. To get the full
+intent-vs-hijack coverage, add the judge and tell it the user's goal:
 
 ```python
 import voan

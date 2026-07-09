@@ -204,7 +204,9 @@ call through Voan and ask: does it gate the call, given the user's actual goal?
 | tier | attack recall (gated) | benign FP |
 |---|:--:|:--:|
 | rules-only (regex tier) | **0%** (0/1054) | 0% (0/17) |
-| **rules + judge** (gpt-4o-mini) | **100%** (1054/1054) | **0%** (0/17) |
+| **rules + judge** (gpt-4o-mini) | **100%** (1054/1054) | **~6%** (1/17)* |
+
+<sub>*Single non-deterministic LLM run; the judge lands at 0–1 FP on these 17 benign across runs (consistent with "passes 16/17" below). Recall (1054/1054) held on the run recorded here.</sub>
 
 Read this honestly:
 
@@ -222,8 +224,10 @@ Read this honestly:
   exactly the class a goal-consistency judge is built for. This does **not** prove
   coverage of *subtle on-goal* attacks (right tool, wrong recipient/amount), which
   this benchmark barely tests.
-- **0% FP** here (17 benign) — but this benign set is easy (clear-cut lookups). The
-  honest false-positive story is on AgentDojo below.
+- **~6% FP** here (1/17 benign) — and this is a **single non-deterministic LLM run**;
+  across runs the judge lands at **0–1 FP** on these 17, so don't read an optimistic
+  0/17 as a guarantee. The benign set is also easy (clear-cut lookups); the honest
+  false-positive story is on AgentDojo below.
 
 Reproduce: `python eval/injecagent_eval.py --judge` (downloads InjecAgent on first run).
 

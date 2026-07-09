@@ -79,7 +79,11 @@ def approve(action, verdict):
 
 
 def main():
-    fw = voan.Firewall(agent="demo-shop-bot", on_ask=approve)
+    from voan.audit import AuditLog
+    # emit=True so the optional live dashboard (server/app.py) receives events.
+    # The SDK default is emit=False — no per-call thread/POST — for production use.
+    fw = voan.Firewall(agent="demo-shop-bot", on_ask=approve,
+                       audit=AuditLog(emit=True))
     guarded = fw.guard_tools(TOOLS)
 
     print("\n  Voan Firewall — live demo")

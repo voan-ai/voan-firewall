@@ -20,7 +20,8 @@ from .schema import Action, BlockedAction, Decision, Session, Verdict
 class Firewall:
     def __init__(self, policy=None, audit=None, agent="agent",
                  on_ask=None, mode="enforce", judge=None, egress_allowlist=None,
-                 judge_fail_closed=False, taint=False, rule_of_two=None, flow=None):
+                 judge_fail_closed=False, taint=False, rule_of_two=None, flow=None,
+                 plan_judge_fallback=False):
         self.policy = policy or PolicyEngine()
         self.audit = audit if audit is not None else AuditLog()
         self.agent = agent
@@ -34,6 +35,11 @@ class Firewall:
         # Opt-in egress allowlist: block any action whose args reference a domain
         # not on this list (catches look-alike destinations the judge can't).
         self.egress_allowlist = egress_allowlist
+        # By default an off-plan action stays HARD-BLOCKED — the plan's guarantee is
+        # deterministic and adaptive-attack-proof. Set True to let a configured judge
+        # backstop an *incomplete* plan (it may re-allow an off-plan action it deems
+        # on-goal); that trades the hard guarantee for flexibility, so it's opt-in.
+        self.plan_judge_fallback = plan_judge_fallback
         self.session = Session()
         self.plan = None              # optional plan-then-execute allowlist
         # Optional taint tracking: flag side-effect targets that came from
@@ -96,11 +102,13 @@ class Firewall:
             base = self._flow(action, self._rule_of_two(action,
                 self._taint(action, self._egress(action, self.policy.evaluate(action)))))
             if self.plan is not None:
-                # Plan-then-execute: planned actions run; off-plan actions fall to
-                # the judge if one is configured (it backstops an incomplete plan
-                # and still blocks injected drift), else are hard-blocked.
+                # Plan-then-execute: planned actions run; an off-plan action is
+                # HARD-BLOCKED by default (the plan's deterministic guarantee stands).
+                # Only if plan_judge_fallback is explicitly enabled does a configured
+                # judge get to backstop an incomplete plan by re-judging the action.
                 verdict = self._plan(action, base)
-                if verdict.rule == "off-plan" and self.judge is not None:
+                if verdict.rule == "off-plan" and self.judge is not None \
+                        and self.plan_judge_fallback:
                     verdict = self._judge(action, base)
             else:
                 verdict = self._judge(action, base)
@@ -232,10 +240,13 @@ def _safe(v):
 def guard(target, **kwargs):
     """One-call convenience: wrap a function, dict, or list with a fresh
     Firewall. `import voan; tools = voan.guard(tools)` and you're protected.
-    Pass policy=/on_ask=/mode= to customize."""
-    fw = Firewall(**{k: kwargs.pop(k) for k in
-                     ("policy", "audit", "agent", "on_ask", "mode", "judge")
-                     if k in kwargs})
+
+    Every ``Firewall(...)`` option is forwarded verbatim — ``policy=``, ``on_ask=``,
+    ``mode=``, ``judge=``, ``judge_fail_closed=``, ``egress_allowlist=``, ``taint=``,
+    ``rule_of_two=``, ``flow=``, ``plan_judge_fallback=``. An **unknown** option
+    raises ``TypeError`` (from ``Firewall.__init__``) rather than being silently
+    dropped — a mis-wired control fails loudly instead of protecting nothing."""
+    fw = Firewall(**kwargs)
     if isinstance(target, (dict, list)):
         return fw.guard_tools(target)
     return fw.guard(target)

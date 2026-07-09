@@ -9,6 +9,13 @@ import time
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent))
 
+# Stock Windows consoles are cp1252; this script prints unicode (µs, ✓). Force
+# UTF-8 so the documented `python benchmark/perf.py` doesn't UnicodeEncodeError.
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:  # pragma: no cover - older interpreters / redirected streams
+    pass
+
 from voan import Firewall, LLMJudge
 from voan.audit import AuditLog
 from voan.policy import PolicyEngine

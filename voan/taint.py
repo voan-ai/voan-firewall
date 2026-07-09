@@ -23,19 +23,41 @@ _TARGET_KEYS = ("recipient", "receiver", "payee", "to", "dest", "destination",
                 "user", "member", "guest", "participant", "contact")
 _READ = ("get_", "read_", "list_", "search_", "find_", "retrieve", "view_", "check_",
          "fetch_", "lookup")
+# Unambiguous side-effect verbs. If any appears in the tool name it is a SINK even
+# when the name also looks read-ish — a "list_payout" / "budget_transfer" /
+# "get_and_send" is a side effect, not a read. These are money/destructive/egress
+# verbs that essentially never name a pure read tool, so matching them fail-CLOSED
+# doesn't over-flag ordinary reads.
+_SINK = ("send", "pay", "payout", "refund", "charge", "transfer", "wire",
+         "withdraw", "delete", "destroy", "drop", "remove", "exec", "execute",
+         "shell", "spawn", "deploy", "publish", "grant", "upload")
 
 
 def is_side_effect(tool):
+    """Classify a tool as a side-effect (sink) vs a read (untrusted source).
+
+    Fail-CLOSED: a sink verb in the name wins over a read-ish prefix, and only a
+    name that is purely read-ish (a read PREFIX and no sink verb) is treated as a
+    read. An unrecognized tool (no read prefix) is a side effect, so taint/flow
+    gate it rather than trusting it — the safe default for provenance."""
     t = str(tool).lower()
-    return not any(t.startswith(r) or r in t for r in _READ)
+    if any(s in t for s in _SINK):
+        return True
+    return not any(t.startswith(r) for r in _READ)
 
 
 class TaintTracker:
     """Remembers text seen in untrusted tool outputs, and flags a side-effect
     target that came from there but not from the (trusted) user goal."""
 
+    # Bound the corpus so a long-running agent can't grow it without limit — keep
+    # a rolling window of the most recent tool outputs (injections show up in the
+    # latest results, so a window is sufficient and keeps memory flat).
+    MAXLEN = 1000
+
     def __init__(self):
-        self._corpus = []
+        from collections import deque
+        self._corpus = deque(maxlen=self.MAXLEN)
 
     def observe(self, output):
         """Record a tool result as untrusted data."""
@@ -44,7 +66,7 @@ class TaintTracker:
             self._corpus.append(s)
 
     def reset(self):
-        self._corpus = []
+        self._corpus.clear()
         return self
 
     def _tainted(self, value):
