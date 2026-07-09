@@ -10,6 +10,16 @@ Catches known-bad <i>and</i> goal-inconsistent agent actions — RCE, data exfil
   <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-policy-informational" alt="Security policy"></a>
 </p>
 
+<p align="center">
+  <img src="docs/hero.gif" alt="A real LangChain agent is hijacked by a poisoned tool result; Voan blocks the refund and data-exfil with one line." width="820">
+</p>
+
+<p align="center">
+A real <b>LangChain</b> agent — not our loop — is hijacked by a <b>poisoned tool result</b> into emailing an attacker.<br>
+Voan sees that address came out of a tool result, not your request, and <b>holds the send</b> — deterministically, no LLM in the gate to fool.<br>
+<code>guard_langchain_auto(tools, goal)</code> &nbsp;·&nbsp; <a href="examples/langchain_auto_attack.py">reproduce&nbsp;→</a>
+</p>
+
 ---
 
 AI agents now take real actions: they run shell commands, move money, touch your
