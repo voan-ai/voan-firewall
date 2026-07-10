@@ -11,7 +11,7 @@ Catches known-bad <i>and</i> goal-inconsistent agent actions — RCE, data exfil
 </p>
 
 <p align="center">
-  <img src="docs/hero.gif" alt="A real LangChain agent is hijacked by a poisoned tool result; Voan blocks the refund and data-exfil with one line." width="820">
+  <img src="docs/hero.gif" alt="A real LangChain agent is hijacked by a poisoned tool result into emailing an attacker; Voan holds the send deterministically, with no LLM in the gate." width="820">
 </p>
 
 <p align="center">
@@ -33,6 +33,13 @@ fast signature tier plus an optional LLM judge for the gray zone.
 Voan Firewall  → runtime:    block the exploit as it happens   (this repo)
 Voan Scanner   → pre-deploy: find the agent's holes            (companion, private beta)
 ```
+
+The examples below use a customer-support agent because it makes a clean,
+reproducible story — but **Voan is agent- and domain-agnostic**. The same gate
+stops a coding agent's `rm -rf`, a data agent's `DROP TABLE`, an MCP server's SSRF,
+or a finance agent's misrouted transfer. The bundled [`demo/demo_agent.py`](demo/demo_agent.py)
+blocks exactly those (shell RCE, credential exfil, destructive DB) alongside the
+refund/email — not just the e-commerce case.
 
 ## Why not just regex rules?
 
@@ -88,6 +95,12 @@ GUARDED — guard_langchain + judge, same agent, same attack:
   >> 0 harmful actions executed — the agent safely tells the user it can't
 ```
 
+These two tiers **layer**, they don't compete: the deterministic auto-guard (the
+hero above) holds the *exfil* with **no LLM in the gate**; the **judge** shown here
+adds the *in-domain* refund — an action with no external recipient to ground
+against, so only intent-vs-goal reasoning catches it. Deterministic floor, judge for
+the gray zone.
+
 Two runnable proofs (both need `OPENAI_API_KEY` in `.env`):
 
 ```bash
@@ -96,10 +109,10 @@ python examples/langchain_real_agent_attack.py   # a real LangChain agent
 python examples/real_agent_attack.py             # a real OpenAI function-calling agent
 ```
 
-Even **gpt-5.4-mini** — a frontier model — is reliably hijacked by research-grade
+Even a capable model like **gpt-4o-mini** is reliably hijacked by research-grade
 attacks (encoded payloads, goal-reframing) that the regex tier doesn't catch, and
 Voan's judge catches them on **every run** (0 hijacks survived across 3 runs). Crude
-injections, frontier models resist on their own — we say so. We also **red-teamed
+injections, capable models often resist on their own — we say so. We also **red-teamed
 Voan itself**: found a look-alike-destination exfil that fools the goal-based judge
 (2/4), then shipped the fix — an opt-in egress allowlist,
 `Firewall(egress_allowlist=["acme.com"])` — that closes it (0/4).
@@ -110,9 +123,10 @@ scenarios across agents/tools we never configured for — Voan's judge gates **1
 (1054/1054) of the induced harmful tool calls at **~6% FP** (1/17 — a single
 non-deterministic LLM run; 0–1 FP across runs) on legitimate ones, while
 the regex tier alone gates **0%** (the tools are domain-specific). That 0→100 is the
-honest shape of it: on a real agent the *judge* is the defense, and 100% holds
-because these attacks are off-goal by construction — subtle on-goal attacks are a
-harder class. Full method, caveats, and both evals: [BENCHMARK.md](BENCHMARK.md).
+honest shape of it: on off-the-shelf tools like these — with no user-named recipient
+for the deterministic tiers to ground against — the *judge* is what gates the attack,
+and 100% holds because these attacks are off-goal by construction; subtle on-goal
+attacks are a harder class. Full method, caveats, and both evals: [BENCHMARK.md](BENCHMARK.md).
 
 ## Install
 
@@ -182,7 +196,7 @@ The strong tiers usually ask you to declare a goal, a plan, or capabilities. The
 one line below asks for **nothing**: point it at a real **LangChain** agent's tools
 and Voan classifies each one itself (untrusted source vs. side-effect sink) and
 tracks provenance across the run — so a value read from a poisoned tool output is
-blocked when the agent tries to send it out. **No LLM judge, deterministic**, so it
+held when the agent tries to send it out. **No LLM judge, deterministic**, so it
 can't be prompted away.
 
 ```python
@@ -193,8 +207,8 @@ tools, _ = guard_langchain_auto(my_langchain_tools, goal=user_request)  # that's
 On a genuine `create_agent` + gpt-4o-mini agent hijacked by a poisoned order lookup
 ([`examples/langchain_auto_attack.py`](examples/langchain_auto_attack.py)): unguarded
 the customer data is **exfiltrated to the attacker**; auto-guarded the exfil email is
-**blocked** — Voan saw the attacker address come out of the lookup and refuse to let
-it leave.
+**held** — Voan saw the attacker address come out of the lookup and refuse to let it
+leave.
 
 **The enforcement is mechanical — no model in the decision, unevadable.** By default it
 is **provenance-gated**: a side effect is held only when its **recipient/destination** is
