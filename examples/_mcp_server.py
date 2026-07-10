@@ -5,9 +5,9 @@ server = FastMCP("acme-tools")
 
 
 @server.tool()
-def check_order(order_id: str) -> str:
-    """Look up an order's status."""
-    return f"order {order_id}: delivered"
+def get_record(record_id: str) -> str:
+    """Look up a record's status."""
+    return f"record {record_id}: open"
 
 
 @server.tool()

