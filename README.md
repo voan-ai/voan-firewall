@@ -22,24 +22,28 @@ Voan sees that address came out of a tool result, not your request, and <b>holds
 
 ---
 
-AI agents now take real actions: they run shell commands, move money, touch your
-database, call your APIs. One prompt injection or one poisoned tool result and an
-agent does something it was never asked to. **Voan Firewall sits inline on every
-tool call, in the agent's own process, and decides `allow / ask / block` before
-any side effect happens.** Think of it as the antivirus/EDR layer for agents: a
-fast signature tier plus an optional LLM judge for the gray zone.
+AI agents now take real actions — a **coding agent** runs shell commands and opens
+PRs, a **data agent** queries and mutates your database, a **DevOps / MCP agent** hits
+internal services, a **finance agent** moves money, a **personal assistant** reads your
+files and sends mail. One prompt injection or one poisoned tool result and *any* of
+them does something it was never asked to. **Voan Firewall sits inline on every tool
+call, in the agent's own process, and decides `allow / ask / block` before any side
+effect happens — whatever the agent, framework, or model.** Think of it as the
+antivirus/EDR layer for agents: deterministic tiers plus an optional LLM judge for the
+gray zone.
 
 ```
 Voan Firewall  → runtime:    block the exploit as it happens   (this repo)
 Voan Scanner   → pre-deploy: find the agent's holes            (companion, private beta)
 ```
 
-The examples below use a customer-support agent because it makes a clean,
-reproducible story — but **Voan is agent- and domain-agnostic**. The same gate
-stops a coding agent's `rm -rf`, a data agent's `DROP TABLE`, an MCP server's SSRF,
-or a finance agent's misrouted transfer. The bundled [`demo/demo_agent.py`](demo/demo_agent.py)
-blocks exactly those (shell RCE, credential exfil, destructive DB) alongside the
-refund/email — not just the e-commerce case.
+> **Voan is agent-, framework-, and domain-agnostic.** Every worked example below uses
+> a single agent — a customer-support bot — because one reproducible story is clearer
+> than five half-told ones. It's *just an illustration*: the same gate stops a coding
+> agent's `rm -rf`, a data agent's `DROP TABLE`, an MCP server's SSRF, or a finance
+> agent's misrouted transfer. The bundled [`demo/demo_agent.py`](demo/demo_agent.py)
+> blocks exactly those (shell RCE, credential exfil, destructive DB), not just the
+> refund/email.
 
 ## Quickstart
 
