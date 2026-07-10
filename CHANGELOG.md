@@ -5,6 +5,8 @@ All notable changes to Voan Firewall. Format loosely follows
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-07-10
+
 ### Changed — auto-instrumentation precision + safety (`guard_langchain_auto`)
 - **Fail loud, never silent.** A tool that can't be instrumented now raises `TypeError`
   instead of being passed through unprotected (the worst failure for a firewall — you

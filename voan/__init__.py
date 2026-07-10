@@ -32,7 +32,7 @@ from .rules import DEFAULT_RULES, Rule
 from .schema import Action, BlockedAction, Decision, Session, Verdict
 from .taint import TaintTracker
 
-__version__ = "0.1.11"
+__version__ = "0.1.12"
 __all__ = [
     "guard", "Firewall", "PolicyEngine", "AuditLog",
     "LLMJudge", "openai_llm", "ollama_llm", "anthropic_llm",

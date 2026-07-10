@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "voan"
-version = "0.1.11"
+version = "0.1.12"
 description = "Voan Firewall — runtime guard for AI agents. Sits inline on every tool call and blocks unauthorized actions (RCE, exfiltration, data loss) before they execute."
 readme = "README.md"
 requires-python = ">=3.9"
