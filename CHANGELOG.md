@@ -18,7 +18,7 @@ All notable changes to Voan Firewall. Format loosely follows
   evidence-based default (the "lethal trifecta" taint-then-gate posture; CaMeL/FIDES).
   Set `strict=True` to restore holding **every** un-named recipient regardless of
   provenance (for unattended / high-security deployments).
-- **`trusted=[...]`**: declare data sources whose output is safe (e.g. your own order
+- **`trusted=[...]`**: declare data sources whose output is safe (e.g. your own trusted
   DB). A recipient pulled from a trusted source is not held — the sound way to authorize
   data-derived destinations is *declared* trust, not inference (an untrusted source can
   hide the attacker's address in the exact field a legitimate one uses).

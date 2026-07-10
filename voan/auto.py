@@ -124,7 +124,7 @@ class AutoGuard:
         src = self.is_source(name, desc) if source is None else source
         snk = is_side_effect(name) if sink is None else sink
         sensitive = any(h in (str(name) + " " + str(desc)).lower() for h in _SENSITIVE_HINTS)
-        # A trusted source's output is declared safe (e.g. your own order DB), so it
+        # A trusted source's output is declared safe (e.g. your own trusted DB), so it
         # does NOT taint: a recipient pulled from it won't be held. This is the sound,
         # literature-endorsed way to authorize data-derived destinations — DECLARED
         # trust, not inferred (an untrusted source can hide the attacker's address in
