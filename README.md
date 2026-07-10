@@ -41,6 +41,25 @@ or a finance agent's misrouted transfer. The bundled [`demo/demo_agent.py`](demo
 blocks exactly those (shell RCE, credential exfil, destructive DB) alongside the
 refund/email — not just the e-commerce case.
 
+## Quickstart
+
+```bash
+pip install voan
+```
+```python
+import voan
+
+# Wrap your agent's tools. A hijacked action to a destination you never asked for
+# is held — deterministically, in-process, with no LLM in the gate to fool.
+tools, _ = voan.guard_langchain_auto(tools, goal=user_request)   # LangChain
+# or:  tools = voan.guard(tools)                                  # plain functions / any framework
+```
+
+That's the deterministic tier. For *in-domain* hijacks (a refund that pays an
+attacker still looks on-goal), add a goal-aware judge — `voan.Firewall(judge=...)`.
+See it stop a real hijacked agent below, or run it yourself:
+`python examples/langchain_auto_attack.py`.
+
 ## Why not just regex rules?
 
 Pattern rules catch the loud stuff (`rm -rf`, known-bad domains). They **cannot**
