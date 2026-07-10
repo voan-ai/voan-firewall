@@ -80,8 +80,17 @@ The one thing a deterministic gate can't ground is an *in-domain* hijack — a r
 that pays an attacker still "looks" like a refund. For that gray zone Voan adds an
 **opt-in LLM judge** that compares each action against the user's goal (it only ever
 *escalates* to BLOCK, never loosens). On a hand-curated 36-case set, regex rules alone
-silently allow ~30% of attacks; the judge closes that blind spot to zero. Full method,
-numbers, honest caveats, and the third-party InjecAgent run live in
+silently allow ~30% of attacks; the judge closes that blind spot to zero:
+
+| 36-case set · 20 attacks + 16 benign | regex only | **+ Voan judge** |
+|---|:--:|:--:|
+| attacks **silently allowed** (no gate at all) | 30% (6/20) | **0%** |
+| attacks auto-blocked | 35% (7/20) | **100%** |
+| attacks held for a human (`ASK`) | 35% (7/20) | — |
+| benign held for approval (money / outbound sends) | 31% (5/16) | 31% |
+| benign hard-blocked (a `DROP TABLE` — deny-by-default) | 6% (1/16) | 6% |
+
+Full method, honest caveats, and the third-party InjecAgent run:
 [BENCHMARK.md](BENCHMARK.md).
 
 ## Proof — it stops a *real* hijacked agent
