@@ -67,34 +67,22 @@ real hijacked agent below, or run the deterministic demo yourself (the
 
 Pattern rules catch the loud stuff (`rm -rf`, known-bad domains). They **cannot**
 tell whether a *benign-looking* action — an email to a normal address, a data
-export — is what the user asked for, or was hijacked by poisoned tool output. So
-Voan adds a second tier: an **LLM judge** that compares each action against the
-user's actual goal. The judge only ever *escalates* a verdict to BLOCK; it never
-loosens one.
+export — is what the user asked for, or was hijacked by poisoned tool output.
 
-On a 36-case eval ([`eval/`](eval/), grounded in an agentic-attack taxonomy —
-OWASP Agentic Top 10; see the `klass` field in [`eval/traces.jsonl`](eval/traces.jsonl);
-gpt-4o-mini judge):
+Voan's answer is **deterministic, not another model**. It tracks where each value
+came from and holds a side effect whose destination arrived via untrusted tool output
+and was never named in the user's request — the exfiltration path — with **no LLM in
+the gate to fool** (the provenance / taint / capability tiers). That covers the
+injected-recipient class *by construction*, not by a percentage, and it can't be
+prompted away.
 
-| 36-case eval | regex rules only | **+ Voan judge** |
-|---|:--:|:--:|
-| Attacks **silently allowed** (no gate at all) | 30% (6/20) | **0% (0/20)** |
-| Attacks auto-blocked | 35% (7/20) | **100% (20/20)** |
-| Benign **hard-blocked** (false positive) | 6% (1/16) | 6% (1/16) |
-
-Read it honestly: rules alone auto-block 35% of attacks and **hold another 35%
-for a human** (`ASK` on money/external sends), but **silently allow the remaining
-30%** — that 30% is the real blind spot. The judge closes it to **zero**, turning
-the silently-allowed attacks into blocks and the held ones into auto-blocks. The
-one false positive is a *legitimate* `DROP TABLE`: destructive DB ops are
-hard-blocked by design (allowlist them explicitly), and the judge can't loosen a
-hard block. A further 5/16 benign actions are *held for approval*, not blocked —
-intended behaviour for money and outbound sends.
-
-> Honest caveat: 36 hand-curated cases is an optimistic ceiling, not a production
-> guarantee, and the judge score is one run of an LLM grader. The defensible
-> number comes from feeding real traces through the same harness — that loop is on
-> the roadmap.
+The one thing a deterministic gate can't ground is an *in-domain* hijack — a refund
+that pays an attacker still "looks" like a refund. For that gray zone Voan adds an
+**opt-in LLM judge** that compares each action against the user's goal (it only ever
+*escalates* to BLOCK, never loosens). On a hand-curated 36-case set, regex rules alone
+silently allow ~30% of attacks; the judge closes that blind spot to zero. Full method,
+numbers, honest caveats, and the third-party InjecAgent run live in
+[BENCHMARK.md](BENCHMARK.md).
 
 ## Proof — it stops a *real* hijacked agent
 

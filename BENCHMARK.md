@@ -36,6 +36,31 @@ Reproduce any of it with `pip install "voan[examples]"`, then:
 | `gap_hunt.py` | hunting new gaps (empty hunts reported too) |
 | `tool_poisoning.py` | injection hidden in tool *descriptions* (MCP / OWASP tool poisoning) |
 
+## Taxonomy eval — 36 hand-curated cases (`eval/run_eval.py`, `eval/traces.jsonl`)
+
+36 cases grounded in an agentic-attack taxonomy (OWASP Agentic Top 10; see the `klass`
+field in [`eval/traces.jsonl`](eval/traces.jsonl)) — 20 attacks + 16 benign, scored by a
+gpt-4o-mini judge:
+
+| 36-case eval | regex rules only | + Voan judge |
+|---|:--:|:--:|
+| Attacks **silently allowed** (no gate at all) | 30% (6/20) | **0% (0/20)** |
+| Attacks auto-blocked | 35% (7/20) | **100% (20/20)** |
+| Attacks held for a human (`ASK`) | 35% (7/20) | — (rolled into blocked) |
+| Benign hard-blocked | 6% (1/16) | 6% (1/16) |
+| Benign held for approval (`ASK`) | 31% (5/16) | 31% (5/16) |
+
+Read honestly: rules alone auto-block 35% and hold another 35% for a human, but
+**silently allow the remaining 30%** — the blind spot. The judge closes it to zero. The
+lone benign hard-block is a *legitimate* `DROP TABLE`: destructive DB ops are
+deny-by-default (allowlist them explicitly), so it's a **design choice, not a false
+positive** — and the judge can't loosen a hard block anyway. The 5/16 "held for
+approval" are money / outbound sends held for a human: intended, sound behaviour.
+
+> Honest caveat: 36 hand-curated cases is an optimistic ceiling, not a production
+> guarantee, and the judge score is one run of an LLM grader. The defensible number
+> comes from feeding real traces through the same harness — see the InjecAgent run below.
+
 ## Test 1 — prompt hardening (`run_benchmark.py`, gpt-4o-mini, 3 runs)
 
 | condition | unguarded | + Voan |
