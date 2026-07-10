@@ -44,20 +44,23 @@ refund/email — not just the e-commerce case.
 ## Quickstart
 
 ```bash
-pip install voan
+pip install voan     # zero runtime deps — the deterministic gate needs no LLM and no API key
 ```
 ```python
 import voan
 
-# Wrap your agent's tools. A hijacked action to a destination you never asked for
-# is held — deterministically, in-process, with no LLM in the gate to fool.
-tools, _ = voan.guard_langchain_auto(tools, goal=user_request)   # LangChain
-# or:  tools = voan.guard(tools)                                  # plain functions / any framework
+# Wrap your agent's tools. A side effect aimed at a destination you never named —
+# an address that came out of a tool result — is held, deterministically and
+# in-process, with no LLM in the gate to fool. Works on LangChain tools and plain
+# functions alike.
+tools, _ = voan.guard_langchain_auto(tools, goal=user_request)
 ```
 
-That's the deterministic tier. For *in-domain* hijacks (a refund that pays an
-attacker still looks on-goal), add a goal-aware judge — `voan.Firewall(judge=...)`.
-See it stop a real hijacked agent below, or run it yourself:
+That tier makes its decision with **no model call at all**. For *in-domain* hijacks
+(a refund that pays an attacker still looks on-goal), add the opt-in, goal-aware
+judge — `voan.Firewall(judge=...)` — which *does* use an LLM backend. Watch it stop a
+real hijacked agent below, or run the deterministic demo yourself (the
+`OPENAI_API_KEY` it needs is for the *agent* it protects, not for Voan):
 `python examples/langchain_auto_attack.py`.
 
 ## Why not just regex rules?
