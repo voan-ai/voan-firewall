@@ -49,7 +49,7 @@ DB = {"delete_database", "drop_table", "execute_sql", "run_query", "db",
       "query", "sql", "run_sql", "execute_query", "cursor"}
 MAIL = {"send_email", "email", "send_message", "send_mail", "notify"}
 HTTP = {"http_request", "fetch", "request", "post", "webhook", "curl"}
-PAY = {"process_refund", "send_payment", "transfer", "charge", "payout"}
+PAY = {"process_refund", "make_payment", "send_payment", "transfer", "charge", "payout"}
 
 # Known-bad exfil destinations used in the scanner's poisoned fixtures, plus a
 # generic "non-corporate recipient" heuristic for the demo.
