@@ -5,6 +5,25 @@ All notable changes to Voan Firewall. Format loosely follows
 
 ## [Unreleased]
 
+### Changed — auto-instrumentation precision + safety (`guard_langchain_auto`)
+- **Fail loud, never silent.** A tool that can't be instrumented now raises `TypeError`
+  instead of being passed through unprotected (the worst failure for a firewall — you
+  think you're protected and you're not). Plain function tools are now supported (wrapped
+  directly), not silently skipped. Always use the returned tool list.
+- **Provenance-gated by default.** A recipient is now held only if it is un-named by the
+  user **and** actually arrived via untrusted tool output (the real injection vector) —
+  so hardcoded / user-context recipients are no longer falsely held. This is the
+  evidence-based default (the "lethal trifecta" taint-then-gate posture; CaMeL/FIDES).
+  Set `strict=True` to restore holding **every** un-named recipient regardless of
+  provenance (for unattended / high-security deployments).
+- **`trusted=[...]`**: declare data sources whose output is safe (e.g. your own order
+  DB). A recipient pulled from a trusted source is not held — the sound way to authorize
+  data-derived destinations is *declared* trust, not inference (an untrusted source can
+  hide the attacker's address in the exact field a legitimate one uses).
+- **Idempotent re-guarding.** Calling `guard_langchain_auto` again on the same tools
+  (e.g. per request with a new `goal`) now replaces the guard instead of stacking
+  wrappers that would enforce a stale goal.
+
 ## [0.1.11] - 2026-07-10
 
 ### Added — the 2026 deterministic + provable spectrum

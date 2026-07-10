@@ -196,24 +196,37 @@ the customer data is **exfiltrated to the attacker**; auto-guarded the exfil ema
 **blocked** — Voan saw the attacker address come out of the lookup and refuse to let
 it leave.
 
-**The enforcement is mechanical — no model in the decision, 0% by construction.** A
-side effect is allowed only if its **recipient/destination** is one the user named in
-their request; any other destination is **held for the user to confirm**. An injection
-cannot win, ever, because it cannot put the attacker's account into the user's own
-words — and there is no LLM in the gate to fool (unlike a judge, which adaptive
-attacks bypass >90%). On AgentDojo this catches the injected-recipient exfils and
-holds ~33% of legitimate sends — but that 33% is **not an error rate**: those are
-sends to a destination the agent read from data rather than one the user named, which
-genuinely *should* be confirmed by a human. The firewall can't know they're safe
-without a human, so it asks — that is the honest, sound behaviour, not a false
-positive. (Read data in a message *body* is fine; only the *recipient* is checked.)
+**The enforcement is mechanical — no model in the decision, unevadable.** By default it
+is **provenance-gated**: a side effect is held only when its **recipient/destination** is
+one the user did **not** name *and* that value actually came out of untrusted tool output
+(the injection vector). A hardcoded or user-context recipient is not held; an attacker
+address that arrived via a poisoned tool result is. An injection cannot win, because it
+cannot put the attacker's account into the user's own words — and there is no LLM in the
+gate to fool (unlike a judge, which adaptive attacks bypass >90%). This is the
+evidence-based posture — the "lethal trifecta" taint-then-gate cut that CaMeL and FIDES
+formalize.
+
+Two knobs tune the residual (a *legitimately* data-derived recipient, e.g. a customer
+email from your own DB, is still held by default — because the firewall can't tell it
+from a poisoned one, and no zero-config classifier soundly can: an untrusted source can
+hide the attacker's address in the exact field a legitimate one uses):
+
+- **`trusted=["get_order", ...]`** — declare data sources whose output is safe; a
+  recipient pulled from one is not held. Sound authorization is *declared* trust, not
+  inference.
+- **`strict=True`** — hold **every** un-named recipient regardless of provenance (the
+  conservative posture for unattended / high-security runs).
+
+A data-derived recipient is **held for confirmation, not blocked** — the honest, sound
+behaviour; reserve confirmations for high-stakes sinks to keep them cheap. (Data in a
+message *body* is fine; only the *recipient/destination* is checked.) A tool Voan can't
+instrument **raises** rather than silently passing through unprotected.
 
 Optionally pass `verify=llm` to *reduce how often a human is asked* — a quarantined
-verifier auto-approves a data-derived recipient it can confirm the goal intends. It
-only ever **downgrades a hold to allow**; it never gates by itself, so soundness stays
-mechanical. (With a frontier verifier the confirm-rate drops — measured 33%→16% —
-and it keeps falling with model quality.) For the full provable version where every
-value carries a capability, see the capability engine below.
+verifier auto-approves a data-derived recipient it can confirm the goal intends. It only
+ever **downgrades a hold to allow**; it never gates by itself, so soundness stays
+mechanical. For the full provable version where every value carries a capability, see the
+capability engine below.
 
 Works on real frameworks too — genuine LangChain tools (with `langchain-core`
 installed) via [`voan/adapters.py`](voan/adapters.py):

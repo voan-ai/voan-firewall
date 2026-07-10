@@ -41,9 +41,16 @@ _STOP = {"true", "false", "null", "none", "http", "https", "status", "amount",
 class AutoGuard:
     """Shared provenance state across a wrapped tool set."""
 
-    def __init__(self, goal="", block=True, verify=None):
+    def __init__(self, goal="", block=True, verify=None, strict=False):
         self.goal = str(goal or "").lower()
         self.block = block
+        # strict=True holds ANY recipient not named in the goal (conservative — more
+        # false holds). Default (False) is provenance-gated: hold only a recipient that
+        # actually arrived via untrusted tool output — the real injection vector — so a
+        # hardcoded or user-context recipient is not held. Sound within the
+        # tool-output-injection model: every non-sink tool is treated as a source, so
+        # `untrusted` is fully populated and an injected address is always tainted.
+        self.strict = strict
         # Optional goal-authorized verifier: llm(system,user)->str. When set, an
         # ungrounded recipient is ALLOWED only if the verifier confirms the goal
         # intends it (sound, model-scaling); without it, the deterministic blocklist
@@ -87,19 +94,25 @@ class AutoGuard:
 
     def violation(self, args):
         """A DESTINATION/RECIPIENT the user did not name in the goal is gated —
-        MECHANICALLY, with no model in the decision (0% by construction, unevadable):
-        an injection can't put the attacker's account into the user's own request.
-        A recipient the user named is allowed. The optional `verify` LLM can only
-        DOWNGRADE a gate to allow (reduce how often a human is asked); it never gates
-        by itself, so the soundness is always the deterministic rule, never an LLM."""
+        MECHANICALLY, with no model in the decision (unevadable): an injection can't
+        put the attacker's account into the user's own request. A recipient the user
+        named is allowed. By default the gate is also PROVENANCE-scoped: a recipient is
+        held only if it actually arrived via untrusted tool output (the injection
+        vector), so a hardcoded/user-context address is not falsely held; set
+        strict=True to hold every un-named recipient regardless of provenance. The
+        optional `verify` LLM can only DOWNGRADE a gate to allow (fewer human asks); it
+        never gates by itself, so soundness is always the deterministic rule."""
         if not isinstance(args, dict):
             return None
         for k, v in args.items():
             if not any(t in str(k).lower() for t in _TARGET_KEYS):
                 continue
-            ungrounded = {t for t in self._tokens(v) if t not in self.goal}
+            # Dangerous only if the user didn't name it AND (default) it actually came
+            # from untrusted tool output. strict=True ignores provenance.
+            ungrounded = {t for t in self._tokens(v)
+                          if t not in self.goal and (self.strict or t in self.untrusted)}
             if not ungrounded:
-                continue                                  # recipient named in goal -> allow
+                continue                                  # named, or not tool-derived -> allow
             if self.verify is not None:
                 from .authorize import goal_authorized  # optional: fewer human asks
                 if goal_authorized(self.goal, v, "\n".join(self.context), self.verify):
@@ -107,10 +120,15 @@ class AutoGuard:
             return str(v)                                 # not user-authorized -> hold
         return None
 
-    def wrap(self, fn, name, desc="", source=None, sink=None):
+    def wrap(self, fn, name, desc="", source=None, sink=None, trusted=False):
         src = self.is_source(name, desc) if source is None else source
         snk = is_side_effect(name) if sink is None else sink
         sensitive = any(h in (str(name) + " " + str(desc)).lower() for h in _SENSITIVE_HINTS)
+        # A trusted source's output is declared safe (e.g. your own order DB), so it
+        # does NOT taint: a recipient pulled from it won't be held. This is the sound,
+        # literature-endorsed way to authorize data-derived destinations — DECLARED
+        # trust, not inferred (an untrusted source can hide the attacker's address in
+        # exactly the field a legitimate one would use).
 
         def wrapped(*a, **k):
             args = k if k else ({"input": a[0]} if len(a) == 1 else
@@ -126,7 +144,7 @@ class AutoGuard:
                             f"authorized automatically (possible injected action). "
                             f"Ask the user to confirm before proceeding.")
             result = fn(*a, **k)
-            if src:
+            if src and not trusted:
                 self.observe(result)
                 self.caps.add("untrusted")
                 if sensitive:
@@ -136,6 +154,7 @@ class AutoGuard:
             return result
 
         wrapped.__name__ = getattr(fn, "__name__", str(name))
+        wrapped._voan_original = fn      # so re-guarding replaces rather than stacks
         return wrapped
 
 
@@ -161,21 +180,46 @@ def capability_agent(goal, tools, llm, sink_class=None, sources=None):
     return CapabilityEngine(sink_class=sc).run(program, tools, sources=srcs)
 
 
-def guard_langchain_auto(tools, goal="", sources=None, sinks=None, verify=None):
-    """Auto-instrument a list of LangChain tools. Voan classifies each tool and
-    shares one provenance tracker across them, so an injected value read by one tool
-    is blocked when another tool tries to send it out — no manual wiring. `sources`
-    / `sinks` (sets of tool names) override the heuristic. Pass `verify=llm` for the
-    sound, model-scaling goal-authorized mode (an ungrounded recipient must be
-    confirmed goal-intended). Returns (tools, guard)."""
-    g = AutoGuard(goal, verify=verify)
+def guard_langchain_auto(tools, goal="", sources=None, sinks=None, verify=None,
+                         strict=False, trusted=None):
+    """Auto-instrument a list of tools. Voan classifies each tool and shares one
+    provenance tracker across them, so an injected value read by one tool is blocked
+    when another tool tries to send it out — no manual wiring. Accepts LangChain tools
+    (StructuredTool / BaseTool exposing `.func`/`.coroutine`) AND plain callables.
+    `sources` / `sinks` (sets of tool names) override the heuristic. `trusted` (set of
+    tool names) declares data sources whose output is safe — a recipient pulled from a
+    trusted source is not held (the sound way to authorize data-derived destinations:
+    declared trust, not inference). Pass `verify=llm` for the model-scaling
+    goal-authorized mode. Returns (tools, guard).
+
+    Fails loud: a tool Voan cannot instrument raises TypeError instead of being passed
+    through unprotected — a silent no-op is the worst failure mode for a firewall (you
+    think you're protected and you're not). A plain function is wrapped into a NEW
+    callable, so always use the RETURNED list, not the one you passed in."""
+    g = AutoGuard(goal, verify=verify, strict=strict)
+    trusted = set(trusted or ())
+    out = []
     for t in tools:
         name = getattr(t, "name", None) or getattr(t, "__name__", "tool")
         desc = getattr(t, "description", "") or ""
         src = None if not sources else (name in sources)
         snk = None if not sinks else (name in sinks)
+        tr = name in trusted
         if getattr(t, "func", None) and callable(t.func):
-            t.func = g.wrap(t.func, name, desc, src, snk)
-        elif getattr(t, "coroutine", None):
-            t.coroutine = g.wrap(t.coroutine, name, desc, src, snk)
-    return tools, g
+            base = getattr(t.func, "_voan_original", t.func)   # unwrap: re-guard replaces
+            t.func = g.wrap(base, name, desc, src, snk, trusted=tr)
+            out.append(t)
+        elif getattr(t, "coroutine", None) and callable(t.coroutine):
+            base = getattr(t.coroutine, "_voan_original", t.coroutine)
+            t.coroutine = g.wrap(base, name, desc, src, snk, trusted=tr)
+            out.append(t)
+        elif callable(t):                       # plain function tool — wrap it directly
+            base = getattr(t, "_voan_original", t)
+            out.append(g.wrap(base, name, desc, src, snk, trusted=tr))
+        else:
+            raise TypeError(
+                f"voan.guard_langchain_auto: tool {name!r} ({type(t).__name__}) exposes "
+                f"no .func/.coroutine and is not callable, so Voan cannot instrument it "
+                f"— it would run UNPROTECTED. Pass a LangChain tool or a plain function."
+            )
+    return out, g
