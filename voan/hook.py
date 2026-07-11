@@ -10,6 +10,7 @@ you can shadow-deploy and measure before you start enforcing.
 """
 import functools
 import inspect
+import threading
 
 from .audit import AuditLog
 from .rules import egress_violation
@@ -62,6 +63,10 @@ class Firewall:
         self.plan_judge_fallback = plan_judge_fallback
         self.session = Session()
         self.plan = None              # optional plan-then-execute allowlist
+        # Serializes the mutable provenance state (taint/flow/rule-of-two/plan/trace) so
+        # parallel (multi-threaded) tool calls on one Firewall can't interleave a
+        # read+update into a corrupt/unsound verdict. The LLM judge runs OUTSIDE it.
+        self._lock = threading.Lock()
         # Optional taint tracking: flag side-effect targets that came from
         # (untrusted) tool output rather than the user's goal — provenance.
         from .taint import TaintTracker
@@ -169,34 +174,36 @@ class Firewall:
         """Run the full deterministic tier chain, then plan-or-judge, and return the
         final Verdict WITHOUT executing anything. Shared by the sync/async guards and
         by the MCP adapter so every entry point gets the same tiers."""
-        base = self._flow(action, self._rule_of_two(action,
-            self._taint(action, self._egress(action, self.policy.evaluate(action)))))
+        with self._lock:
+            base = self._flow(action, self._rule_of_two(action,
+                self._taint(action, self._egress(action, self.policy.evaluate(action)))))
+            goal, trace = self.session.goal, list(self.session.trace)   # snapshot
+            planned = self._plan(action, base) if self.plan is not None else None
+        # The LLM judge may make a NETWORK call, so it runs OUTSIDE the state lock, on the
+        # trace snapshot taken above (never iterating a concurrently-mutated trace).
         if self.plan is not None:
-            # Plan-then-execute: planned actions run; an off-plan (injected) action is
-            # HARD-BLOCKED. Only if plan_judge_fallback is enabled AND a configured
-            # judge AFFIRMATIVELY clears it (an explicit ALLOW) does it run — a judge
-            # error / timeout / None keeps the off-plan BLOCK (fail closed).
-            verdict = self._plan(action, base)
+            verdict = planned
+            # Plan-then-execute: an off-plan (injected) action is HARD-BLOCKED. Only if
+            # plan_judge_fallback is enabled AND a configured judge AFFIRMATIVELY clears
+            # it (an explicit LLM ALLOW — not a grounding short-circuit) does it run.
             if verdict.rule == "off-plan" and self.judge is not None \
                     and self.plan_judge_fallback:
-                jv = self.judge.evaluate(self.session.goal, action, self.session.trace)
-                # Only an explicit LLM ALLOW lifts the off-plan BLOCK — a deterministic
-                # grounding-ALLOW (target merely named in the goal) must NOT, or an
-                # injected off-plan action whose target coincides with a goal token
-                # would slip the plan's guarantee.
+                jv = self.judge.evaluate(goal, action, trace)
                 if jv is not None and jv.decision == Decision.ALLOW \
                         and jv.rule != "grounding":
                     verdict = base
             return verdict
-        return self._judge(action, base)
+        return self._judge(action, base, goal, trace)
 
     def _record_output(self, tool, result):
-        """Feed a tool's (untrusted) output into the judge trace + provenance tiers."""
-        self.session.add_output(tool, result)
-        if self.taint is not None:
-            self.taint.observe(result)
-        if self.flow is not None:
-            self.flow.observe(tool, result)
+        """Feed a tool's (untrusted) output into the judge trace + provenance tiers,
+        under the state lock so a concurrent _evaluate can't read a half-written update."""
+        with self._lock:
+            self.session.add_output(tool, result)
+            if self.taint is not None:
+                self.taint.observe(result)
+            if self.flow is not None:
+                self.flow.observe(tool, result)
 
     def _egress(self, action, verdict):
         """Deterministic destination check: block egress to any domain not on the
@@ -258,13 +265,16 @@ class Firewall:
         return Verdict(Decision.BLOCK, rule="off-plan", code="AGT", severity="High",
                        reason="action was not in the committed plan")
 
-    def _judge(self, action, verdict):
+    def _judge(self, action, verdict, goal=None, trace=None):
         """Second tier: the LLM judge may ESCALATE a rule verdict to BLOCK when an
-        action drifts from the user's goal, but never loosens it."""
+        action drifts from the user's goal, but never loosens it. `goal`/`trace` are the
+        snapshot taken under the state lock (so the judge reads a stable trace)."""
         if self.judge is None or verdict.decision == Decision.BLOCK:
             return verdict
-        jv = self.judge.evaluate(self.session.goal, action, self.session.trace)
-        if jv is None and self.judge_fail_closed and self.session.goal:
+        goal = self.session.goal if goal is None else goal
+        trace = self.session.trace if trace is None else trace
+        jv = self.judge.evaluate(goal, action, trace)
+        if jv is None and self.judge_fail_closed and goal:
             # judge was supposed to run but returned no answer (error/timeout or an
             # unparseable backend response) -> don't fail open. (A dead-backend judge
             # under judge_fail_closed is rejected at construction, so this is a live

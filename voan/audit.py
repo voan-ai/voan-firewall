@@ -10,10 +10,28 @@ the SDK keeps zero hard dependencies.
 import atexit
 import json
 import os
+import re
 import threading
 import time
 import urllib.request
 import warnings
+
+# Mask credential-shaped values before they are PERSISTED to the on-disk trail, so the
+# audit log isn't a plaintext secret store (the tool name / decision / structure survive
+# for forensics; only the secret VALUE is redacted).
+_SECRET_RX = re.compile(
+    r"(?i)(sk-[A-Za-z0-9_-]{6,}|AGENT_TOKEN\s*=\s*\S+|api[_-]?key\s*[=:]\s*\S+|"
+    r"password\s*[=:]\s*\S+|bearer\s+[A-Za-z0-9._-]{8,}|\b\d[\d -]{11,17}\d\b)")
+
+
+def _scrub(obj):
+    if isinstance(obj, str):
+        return _SECRET_RX.sub("[REDACTED]", obj)
+    if isinstance(obj, dict):
+        return {k: _scrub(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_scrub(v) for v in obj]
+    return obj
 
 
 class AuditLog:
@@ -46,7 +64,7 @@ class AuditLog:
             "iso": time.strftime("%H:%M:%S", time.localtime(action.ts)),
             "agent": action.agent,
             "tool": action.tool,
-            "args": action.args,
+            "args": _scrub(action.args),
             "decision": verdict.decision.value,
             "rule": verdict.rule,
             "code": verdict.code,
