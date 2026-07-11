@@ -13,10 +13,38 @@ so an LLM that paraphrases a leaked value can slip past. It catches the common,
 literal injection→exfil pattern automatically; it is not the provable capability
 engine.
 """
+import inspect
 import json
 import re
 
 from .taint import is_side_effect
+
+
+def _bind_args(fn, a, k):
+    """Map a call's positional+keyword args to {param_name: value} using the tool's
+    real signature, so a recipient passed POSITIONALLY is seen under its true name
+    (not dropped or given a synthetic key), and **kwargs/*args are spliced to the top
+    level. Falls back to a best-effort merge if the signature can't be introspected."""
+    try:
+        sig = inspect.signature(fn)
+        bound = sig.bind_partial(*a, **k)
+        bound.apply_defaults()
+        flat = {}
+        for pname, val in bound.arguments.items():
+            kind = sig.parameters[pname].kind
+            if kind is inspect.Parameter.VAR_KEYWORD and isinstance(val, dict):
+                for kk, vv in val.items():
+                    flat[str(kk)] = vv
+            elif kind is inspect.Parameter.VAR_POSITIONAL and isinstance(val, (list, tuple)):
+                for i, vv in enumerate(val):
+                    flat.setdefault(f"arg{i}", vv)
+            else:
+                flat[pname] = val
+        return flat
+    except (TypeError, ValueError):
+        merged = {"input": a[0]} if len(a) == 1 else {f"a{i}": x for i, x in enumerate(a)}
+        merged.update(k)
+        return merged
 
 _SOURCE_HINTS = ("read", "fetch", "search", "list", "email", "web", "file", "inbox",
                  "message", "review", "lookup", "load", "browse", "get", "retrieve",
@@ -105,9 +133,10 @@ class AutoGuard:
         never gates by itself, so soundness is always the deterministic rule."""
         if not isinstance(args, dict):
             return None
-        for k, v in args.items():
-            if not any(t in str(k).lower() for t in _TARGET_KEYS):
-                continue
+        from .taint import target_scalars
+        # Ancestor-aware + fail-safe on opaque/positional keys, so an injected recipient
+        # can't hide in a nested container or under a synthetic key (arg0/input/...).
+        for v in target_scalars(args, _TARGET_KEYS):
             # Dangerous only if the user didn't name it AND (default) it actually came
             # from untrusted tool output. strict=True ignores provenance.
             ungrounded = {t for t in self._tokens(v)
@@ -131,20 +160,23 @@ class AutoGuard:
         # trust, not inferred (an untrusted source can hide the attacker's address in
         # exactly the field a legitimate one would use).
 
-        def wrapped(*a, **k):
-            args = k if k else ({"input": a[0]} if len(a) == 1 else
-                                {f"a{i}": x for i, x in enumerate(a)})
-            if snk:
-                bad = self.violation(args)                    # ungrounded recipient
-                reason = (f"the destination '{bad}' is not one the user named" if bad
-                          else ("this action can send data out, and the session has "
-                                "already read untrusted content and sensitive data"
-                                if self._rule_of_two(name, args) else None))
-                if reason and self.block:
-                    return (f"\U0001f6d1 Voan held {name}: {reason}, so it can't be "
-                            f"authorized automatically (possible injected action). "
-                            f"Ask the user to confirm before proceeding.")
-            result = fn(*a, **k)
+        def _held(a, k):
+            """Return the block message if this call must be held, else None."""
+            if not snk:
+                return None
+            args = _bind_args(fn, a, k)               # positional recipient -> real name
+            bad = self.violation(args)                # ungrounded recipient
+            reason = (f"the destination '{bad}' is not one the user named" if bad
+                      else ("this action can send data out, and the session has "
+                            "already read untrusted content and sensitive data"
+                            if self._rule_of_two(name, args) else None))
+            if reason and self.block:
+                return (f"\U0001f6d1 Voan held {name}: {reason}, so it can't be "
+                        f"authorized automatically (possible injected action). "
+                        f"Ask the user to confirm before proceeding.")
+            return None
+
+        def _after(result):
             if src and not trusted:
                 self.observe(result)
                 self.caps.add("untrusted")
@@ -152,6 +184,25 @@ class AutoGuard:
                     self.caps.add("sensitive")
             if snk:
                 self.caps.add("external")
+
+        if inspect.iscoroutinefunction(fn):
+            async def awrapped(*a, **k):
+                held = _held(a, k)
+                if held is not None:
+                    return held
+                result = await fn(*a, **k)            # await the REAL output, then observe
+                _after(result)
+                return result
+            awrapped.__name__ = getattr(fn, "__name__", str(name))
+            awrapped._voan_original = fn
+            return awrapped
+
+        def wrapped(*a, **k):
+            held = _held(a, k)
+            if held is not None:
+                return held
+            result = fn(*a, **k)
+            _after(result)
             return result
 
         wrapped.__name__ = getattr(fn, "__name__", str(name))
@@ -159,18 +210,20 @@ class AutoGuard:
         return wrapped
 
 
-def capability_agent(goal, tools, llm, sink_class=None, sources=None):
-    """One call for the full, PROVABLE CaMeL loop — no hand-written program. Voan
-    derives the capability program from the trusted goal (the privileged planner),
-    auto-classifies each tool (reads = untrusted sources, side effects = external
-    sinks), and runs the program through the capability interpreter, which threads a
-    capability onto every value and refuses to let an untrusted one steer a sink.
-    `tools` = {name: fn}, `llm(system,user)->str`. Returns the interpreter env
+def capability_agent(goal, tools, llm, sink_class=None, sources=None, confidential=None):
+    """One call for the CaMeL loop — no hand-written program. Voan derives the
+    capability program from the trusted goal (the privileged planner), auto-classifies
+    each tool (reads = untrusted sources, side effects = external sinks), and runs the
+    program through the capability interpreter, which threads a capability onto every
+    value. `tools` = {name: fn}, `llm(system,user)->str`. Returns the interpreter env
     (var -> Capsule); raises voan.Denied if the program violates an invariant.
 
-    This is the provable end of the spectrum: unlike the mechanical grounding guard
-    (which holds an ungrounded recipient for a human), here nothing untrusted can
-    reach a sink at all — for values that flow through the program."""
+    By default this enforces the INTEGRITY invariant (anti-hijack: no untrusted value
+    steers a sink argument). To ALSO enforce CONFIDENTIALITY (anti-exfil), pass
+    `confidential={tool: readers}` marking sources whose output may only reach certain
+    sink classes; without it every source output is readable anywhere (readers={ANY}),
+    so the confidentiality invariant is inert — integrity still blocks the primary
+    injection→attacker-recipient exfil."""
     from .capability import CapabilityEngine
     from .planner import derive_capability_program
     names = list(tools)
@@ -178,7 +231,8 @@ def capability_agent(goal, tools, llm, sink_class=None, sources=None):
     sc = sink_class if sink_class is not None else {n: "external" for n in sinks}
     srcs = sources if sources is not None else {n for n in names if n not in sinks}
     program = derive_capability_program(goal, names, llm)
-    return CapabilityEngine(sink_class=sc).run(program, tools, sources=srcs)
+    return CapabilityEngine(sink_class=sc).run(program, tools, sources=srcs,
+                                               confidential=confidential)
 
 
 def guard_langchain_auto(tools, goal="", sources=None, sinks=None, verify=None,
@@ -206,13 +260,18 @@ def guard_langchain_auto(tools, goal="", sources=None, sinks=None, verify=None,
         src = None if not sources else (name in sources)
         snk = None if not sinks else (name in sinks)
         tr = name in trusted
+        wrapped_any = False
         if getattr(t, "func", None) and callable(t.func):
             base = getattr(t.func, "_voan_original", t.func)   # unwrap: re-guard replaces
             t.func = g.wrap(base, name, desc, src, snk, trusted=tr)
-            out.append(t)
-        elif getattr(t, "coroutine", None) and callable(t.coroutine):
+            wrapped_any = True
+        if getattr(t, "coroutine", None) and callable(t.coroutine):
+            # Wrap the async path TOO (not elif) — a tool with both is half-guarded
+            # otherwise, and ainvoke/arun would run the unguarded coroutine.
             base = getattr(t.coroutine, "_voan_original", t.coroutine)
             t.coroutine = g.wrap(base, name, desc, src, snk, trusted=tr)
+            wrapped_any = True
+        if wrapped_any:
             out.append(t)
         elif callable(t):                       # plain function tool — wrap it directly
             base = getattr(t, "_voan_original", t)

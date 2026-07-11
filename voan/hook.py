@@ -32,6 +32,14 @@ class Firewall:
         # verdict stands). Set this to BLOCK instead — don't let a flaky security
         # tier silently wave actions through.
         self.judge_fail_closed = judge_fail_closed
+        if judge is not None and judge_fail_closed and not getattr(judge, "available", True):
+            # A fail-closed judge with no working backend can never actually judge, so
+            # every action (once a goal is set) would be blocked — fail LOUD instead of
+            # giving false assurance from an opt-in flag that silently does nothing.
+            raise ValueError(
+                "judge_fail_closed=True but the judge has no working backend "
+                "(available=False). Give it a real backend (llm=…), or drop "
+                "judge_fail_closed.")
         # Opt-in egress allowlist: block any action whose args reference a domain
         # not on this list (catches look-alike destinations the judge can't).
         self.egress_allowlist = egress_allowlist
@@ -73,6 +81,8 @@ class Firewall:
             self.r2.reset()
         if self.flow is not None:
             self.flow.reset()
+        if self.plan is not None:
+            self.plan.reset()      # re-sync consumed-step state with the new task
         return self
 
     def set_plan(self, steps):
@@ -92,40 +102,74 @@ class Firewall:
                                            agent=self.agent))
 
     def guard(self, fn=None, *, name=None):
-        """Wrap one callable. Usable directly or as a decorator (@fw.guard)."""
+        """Wrap one callable. Usable directly or as a decorator (@fw.guard). An async
+        (coroutine) tool gets an async wrapper, so the gate runs on the REAL awaited
+        result — a sync wrapper on an async tool would gate/observe a bare coroutine
+        object and silently fail open on the async execution path."""
         if fn is None:
             return lambda f: self.guard(f, name=name)
         tool = name or getattr(fn, "__name__", "tool")
+
+        if inspect.iscoroutinefunction(fn):
+            @functools.wraps(fn)
+            async def awrapped(*args, **kwargs):
+                action = Action(tool=tool, args=self._bind(fn, args, kwargs),
+                                agent=self.agent)
+                verdict = self._evaluate(action)
+                self.audit.record(action, verdict)
+                self._gate(action, verdict)
+                result = await fn(*args, **kwargs)
+                self._record_output(tool, result)
+                return result
+            awrapped.__voan_guarded__ = True
+            return awrapped
 
         @functools.wraps(fn)
         def wrapped(*args, **kwargs):
             action = Action(tool=tool, args=self._bind(fn, args, kwargs),
                             agent=self.agent)
-            base = self._flow(action, self._rule_of_two(action,
-                self._taint(action, self._egress(action, self.policy.evaluate(action)))))
-            if self.plan is not None:
-                # Plan-then-execute: planned actions run; an off-plan action is
-                # HARD-BLOCKED by default (the plan's deterministic guarantee stands).
-                # Only if plan_judge_fallback is explicitly enabled does a configured
-                # judge get to backstop an incomplete plan by re-judging the action.
-                verdict = self._plan(action, base)
-                if verdict.rule == "off-plan" and self.judge is not None \
-                        and self.plan_judge_fallback:
-                    verdict = self._judge(action, base)
-            else:
-                verdict = self._judge(action, base)
+            verdict = self._evaluate(action)
             self.audit.record(action, verdict)
             self._gate(action, verdict)
             result = fn(*args, **kwargs)
-            self.session.add_output(tool, result)   # feeds the judge's context
-            if self.taint is not None:
-                self.taint.observe(result)           # untrusted-data provenance
-            if self.flow is not None:
-                self.flow.observe(tool, result)      # confidential-data provenance
+            self._record_output(tool, result)
             return result
 
         wrapped.__voan_guarded__ = True
         return wrapped
+
+    def _evaluate(self, action):
+        """Run the full deterministic tier chain, then plan-or-judge, and return the
+        final Verdict WITHOUT executing anything. Shared by the sync/async guards and
+        by the MCP adapter so every entry point gets the same tiers."""
+        base = self._flow(action, self._rule_of_two(action,
+            self._taint(action, self._egress(action, self.policy.evaluate(action)))))
+        if self.plan is not None:
+            # Plan-then-execute: planned actions run; an off-plan (injected) action is
+            # HARD-BLOCKED. Only if plan_judge_fallback is enabled AND a configured
+            # judge AFFIRMATIVELY clears it (an explicit ALLOW) does it run — a judge
+            # error / timeout / None keeps the off-plan BLOCK (fail closed).
+            verdict = self._plan(action, base)
+            if verdict.rule == "off-plan" and self.judge is not None \
+                    and self.plan_judge_fallback:
+                jv = self.judge.evaluate(self.session.goal, action, self.session.trace)
+                # Only an explicit LLM ALLOW lifts the off-plan BLOCK — a deterministic
+                # grounding-ALLOW (target merely named in the goal) must NOT, or an
+                # injected off-plan action whose target coincides with a goal token
+                # would slip the plan's guarantee.
+                if jv is not None and jv.decision == Decision.ALLOW \
+                        and jv.rule != "grounding":
+                    verdict = base
+            return verdict
+        return self._judge(action, base)
+
+    def _record_output(self, tool, result):
+        """Feed a tool's (untrusted) output into the judge trace + provenance tiers."""
+        self.session.add_output(tool, result)
+        if self.taint is not None:
+            self.taint.observe(result)
+        if self.flow is not None:
+            self.flow.observe(tool, result)
 
     def _egress(self, action, verdict):
         """Deterministic destination check: block egress to any domain not on the
@@ -193,12 +237,14 @@ class Firewall:
         if self.judge is None or verdict.decision == Decision.BLOCK:
             return verdict
         jv = self.judge.evaluate(self.session.goal, action, self.session.trace)
-        if jv is None and self.judge_fail_closed and self.session.goal \
-                and getattr(self.judge, "available", False):
-            # judge was supposed to run but the backend failed -> don't fail open
+        if jv is None and self.judge_fail_closed and self.session.goal:
+            # judge was supposed to run but returned no answer (error/timeout or an
+            # unparseable backend response) -> don't fail open. (A dead-backend judge
+            # under judge_fail_closed is rejected at construction, so this is a live
+            # judge that could not decide.)
             return Verdict(Decision.BLOCK, rule="judge-fail-closed", code="AID",
                            severity="High",
-                           reason="judge backend unavailable; failing closed")
+                           reason="judge backend unavailable/ambiguous; failing closed")
         return jv if jv and jv.decision == Decision.BLOCK else verdict
 
     def guard_tools(self, tools):
@@ -215,6 +261,12 @@ class Firewall:
             raise BlockedAction(action, verdict)
         if verdict.decision == Decision.ASK:
             approved = self.on_ask(action, verdict) if self.on_ask else False
+            if inspect.isawaitable(approved):
+                # a sync guard can't run an async confirm here; a coroutine object is
+                # not an approval -> deny (fail closed). Use guard_mcp for async on_ask.
+                if hasattr(approved, "close"):
+                    approved.close()           # avoid a 'never awaited' RuntimeWarning
+                approved = False
             if not approved:
                 raise BlockedAction(action, verdict, denied_by_user=True)
 
@@ -224,7 +276,19 @@ class Firewall:
             sig = inspect.signature(fn)
             bound = sig.bind_partial(*args, **kwargs)
             bound.apply_defaults()
-            return {k: _safe(v) for k, v in bound.arguments.items()}
+            flat = {}
+            for pname, val in bound.arguments.items():
+                kind = sig.parameters[pname].kind
+                if kind is inspect.Parameter.VAR_KEYWORD and isinstance(val, dict):
+                    for k, v in val.items():          # splice **kwargs up to top level
+                        flat[str(k)] = _safe(v)        # so target keys aren't nested
+                elif kind is inspect.Parameter.VAR_POSITIONAL \
+                        and isinstance(val, (list, tuple)):
+                    for i, v in enumerate(val):        # *args -> arg0, arg1, ...
+                        flat.setdefault(f"arg{i}", _safe(v))
+                else:
+                    flat[pname] = _safe(val)
+            return flat
         except (TypeError, ValueError):
             return {"args": _safe(args), "kwargs": _safe(kwargs)}
 

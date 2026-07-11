@@ -37,4 +37,7 @@ def goal_authorized(goal, dest, context, llm):
                       f"\n\nPROPOSED destination: {dest}\n\nGoal-intended? YES/NO:")
     except Exception:
         return False
-    return "yes" in (r or "").strip().lower()[:5]
+    # Exact match only — the verifier is instructed to reply ONLY 'YES' or 'NO', so a
+    # hedge that merely starts with 'yes' ("Yes and no", "Yes? No, …") must NOT
+    # downgrade the hold. Anything that isn't exactly 'yes' fails closed.
+    return (r or "").strip().lower() == "yes"

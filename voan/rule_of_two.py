@@ -22,13 +22,15 @@ UNTRUSTED, SENSITIVE, EXTERNAL = "untrusted", "sensitive", "external"
 # Coarse name-based defaults. Declaration overrides these; they only guess.
 _EXT = ("send", "pay", "transfer", "post", "share", "delete", "charge", "payout",
         "write_", "create_", "update_", "schedule", "invite", "grant", "publish",
-        "email", "message", "notify", "upload", "move_")
+        "email", "message", "notify", "upload", "move_", "export", "download",
+        "http", "request", "sms", "sync", "dispatch", "webhook", "wire")
 _UNTRUSTED_SRC = ("read_", "get_webpage", "fetch", "search", "browse", "web",
                   "review", "inbox", "channel", "get_emails", "get_messages",
                   "get_file", "read_file", "list_")
 _SENSITIVE_SRC = ("balance", "transaction", "account", "iban", "payment", "password",
                   "secret", "key", "credential", "ssn", "card", "health", "salary",
-                  "scheduled", "contact", "calendar", "private", "get_file", "read_file")
+                  "scheduled", "contact", "calendar", "private", "get_file", "read_file",
+                  "profile", "customer", "record", "medical", "address", "dob")
 
 
 def _default_caps(tool):
@@ -58,12 +60,14 @@ class RuleOfTwo:
         return self.declared.get(action.tool, _default_caps(action.tool))
 
     def violates(self, action):
-        """True if this EXTERNAL action would make the session hold all three —
-        i.e. untrusted + sensitive are already active. Checked BEFORE the action's
-        own caps are folded in, so an external send only trips once the session has
-        separately seen untrusted content and sensitive data."""
+        """True if letting this action run would realize all THREE properties in the
+        session. The action's OWN caps are folded into the test (not just self.active),
+        so a single atomic tool that both reads sensitive data AND sends externally is
+        held once the session already holds untrusted input — the two-action exfil
+        (read_secret then send) is still caught because observe() accumulates state."""
         c = self.caps_of(action)
-        return EXTERNAL in c and UNTRUSTED in self.active and SENSITIVE in self.active
+        seen = self.active | c
+        return EXTERNAL in c and UNTRUSTED in seen and SENSITIVE in seen
 
     def observe(self, action):
         """Fold this action's capabilities into the session state."""

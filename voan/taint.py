@@ -18,9 +18,12 @@ is trusted (grounding) and is never gated by taint.
 Full CaMeL tracks provenance per-value through a capability interpreter; this is a
 pragmatic string-level approximation for a drop-in SDK, and is opt-in.
 """
-_TARGET_KEYS = ("recipient", "receiver", "payee", "to", "dest", "destination",
-                "address", "account", "iban", "email", "channel", "phone", "url",
-                "user", "member", "guest", "participant", "contact")
+import re
+
+_TARGET_KEYS = ("recipient", "receiver", "payee", "beneficiary", "to", "cc", "bcc",
+                "dest", "destination", "address", "account", "iban", "wallet", "email",
+                "channel", "phone", "url", "webhook", "endpoint", "user", "member",
+                "guest", "participant", "contact")
 _READ = ("get_", "read_", "list_", "search_", "find_", "retrieve", "view_", "check_",
          "fetch_", "lookup")
 # Unambiguous side-effect verbs. If any appears in the tool name it is a SINK even
@@ -28,9 +31,14 @@ _READ = ("get_", "read_", "list_", "search_", "find_", "retrieve", "view_", "che
 # "get_and_send" is a side effect, not a read. These are money/destructive/egress
 # verbs that essentially never name a pure read tool, so matching them fail-CLOSED
 # doesn't over-flag ordinary reads.
+# NOTE: keep these UNAMBIGUOUS action verbs only. Read-object nouns like email /
+# message / post are deliberately EXCLUDED — they also name read tools (read_email,
+# get_messages), and a bare-noun match would misclassify those reads as sinks.
 _SINK = ("send", "pay", "payout", "refund", "charge", "transfer", "wire",
          "withdraw", "delete", "destroy", "drop", "remove", "exec", "execute",
-         "shell", "spawn", "deploy", "publish", "grant", "upload")
+         "shell", "spawn", "deploy", "publish", "grant", "upload", "notify",
+         "share", "invite", "write", "create", "update", "checkout", "move_",
+         "dispatch")
 
 
 def is_side_effect(tool):
@@ -44,6 +52,44 @@ def is_side_effect(tool):
     if any(s in t for s in _SINK):
         return True
     return not any(t.startswith(r) for r in _READ)
+
+
+# Synthetic / opaque arg keys the guards produce when a recipient was passed
+# POSITIONALLY or a tool's signature can't be introspected. A scalar under one of
+# these on a SINK is a possible recipient we couldn't name — check it fail-safe.
+_OPAQUE = re.compile(r"^(?:args|arg\d+|a\d+|input|kwargs)$")
+
+
+def target_scalars(args, target_keys):
+    """Collect the scalar arg values to check as a side-effect's destination.
+
+    Ancestor-aware: a scalar nested under a target-keyed ancestor at ANY depth counts
+    (so {"to": {"forward": x}} or {"recipient": [x]} is caught, not only a target key
+    at the leaf). Walks dict/list/tuple/set/frozenset. If NO named target exists, falls
+    back to scalars under an OPAQUE/positional key (args/argN/aN/input/kwargs) so a
+    positional or un-introspectable recipient on a sink isn't invisible (fail-safe)."""
+    named, opaque = [], []
+
+    def walk(obj, under_target, under_opaque):
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                walk(v, under_target or any(t in str(k).lower() for t in target_keys),
+                     under_opaque)
+        elif isinstance(obj, (list, tuple, set, frozenset)):
+            for v in obj:
+                walk(v, under_target, under_opaque)
+        elif under_target:
+            named.append(obj)
+        elif under_opaque:
+            opaque.append(obj)
+
+    if isinstance(args, dict):
+        for k, v in args.items():
+            kl = str(k).lower()
+            walk(v, any(t in kl for t in target_keys), bool(_OPAQUE.match(kl)))
+    # UNION, not either/or: a legitimately-named target must NOT license an unchecked
+    # second destination hiding in a positional/opaque slot (notify('general', attacker)).
+    return named + opaque
 
 
 class TaintTracker:
@@ -74,15 +120,19 @@ class TaintTracker:
         return len(v) >= 4 and any(v in c for c in self._corpus)
 
     def bad_target(self, action, goal):
-        """Return the first data-derived, not-in-goal target of a side-effect
-        action, else None. Reads and goal-named targets are never flagged."""
+        """Return the first data-derived, not-in-goal target of a side-effect action,
+        else None. Reads and goal-named targets are never flagged. Uses target_scalars
+        so a tainted recipient nested under a target key at any depth, or passed
+        positionally/opaquely on a sink, is inspected — not only a top-level scalar
+        under a leaf target key."""
         if not is_side_effect(action.tool):
             return None
         args = action.args if isinstance(action.args, dict) else {}
         g = str(goal or "").lower()
-        for k, v in args.items():
-            if isinstance(v, (str, int, float)) and any(t in str(k).lower() for t in _TARGET_KEYS):
-                s = str(v).strip()
-                if len(s) >= 4 and s.lower() not in g and self._tainted(s):
-                    return s
+        for v in target_scalars(args, _TARGET_KEYS):
+            if not isinstance(v, (str, int, float)):
+                continue
+            s = str(v).strip()
+            if len(s) >= 4 and s.lower() not in g and self._tainted(s):
+                return s
         return None

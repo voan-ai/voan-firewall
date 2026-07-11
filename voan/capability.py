@@ -19,14 +19,49 @@ thread Capsules through their tool calls get that guarantee for those values; th
 `Firewall(taint=/flow=)` tiers are the automatic, approximate version for agents
 that don't. (CaMeL: Debenedetti et al. 2025; FIDES: Microsoft 2025.)
 """
+import re
+
 TRUSTED, UNTRUSTED = "trusted", "untrusted"
 ANY = "*"   # readers = {ANY} means "may flow anywhere"
 
 # argument names that steer WHERE/HOW a side effect acts — untrusted data here is
 # a hijack, so these are the control-sensitive sinks for the integrity invariant.
-SENSITIVE_PARAMS = ("recipient", "receiver", "payee", "to", "dest", "destination",
-                    "address", "account", "iban", "url", "command", "cmd", "path",
-                    "channel", "user", "query")
+# Kept at least as broad as taint._TARGET_KEYS so the PROVABLE core is never weaker
+# than the approximate string-taint tier.
+SENSITIVE_PARAMS = ("recipient", "receiver", "payee", "beneficiary", "to", "cc", "bcc",
+                    "dest", "destination", "address", "account", "iban", "wallet",
+                    "url", "webhook", "endpoint", "command", "cmd", "path", "channel",
+                    "email", "phone", "user", "member", "guest", "participant",
+                    "contact", "query")
+
+_REF = re.compile(r"^\$([A-Za-z_]\w*)(?:\.(.+))?$")
+
+
+def _iter_capsules(value):
+    """Yield every Capsule nested anywhere inside value (dict/list/tuple/set/frozenset),
+    so a Capsule laundered through any container is not invisible to the invariants."""
+    if isinstance(value, Capsule):
+        yield value
+    elif isinstance(value, dict):
+        for v in value.values():
+            yield from _iter_capsules(v)
+    elif isinstance(value, (list, tuple, set, frozenset)):
+        for v in value:
+            yield from _iter_capsules(v)
+
+
+def _unwrap(value):
+    """Replace every nested Capsule with its .value, preserving structure, so the
+    real tool never receives a raw Capsule object."""
+    if isinstance(value, Capsule):
+        return value.value
+    if isinstance(value, dict):
+        return {k: _unwrap(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return type(value)(_unwrap(v) for v in value)
+    if isinstance(value, (set, frozenset)):
+        return type(value)(_unwrap(v) for v in value)
+    return value
 
 
 class Denied(Exception):
@@ -101,21 +136,20 @@ class CapabilityEngine:
         True. Non-Capsule args are treated as trusted literals (the caller vouches)."""
         cls = self.sink_class.get(tool)
         for k, v in (args or {}).items():
-            if not isinstance(v, Capsule):
-                continue
-            if v.integrity == UNTRUSTED and self._is_sensitive(k):
-                raise Denied(f"untrusted value steers '{k}' of {tool} "
-                             f"(provenance: {v.source}) — hijack")
-            if cls is not None and ANY not in v.readers and cls not in v.readers:
-                raise Denied(f"confidential value (readers={set(v.readers)}) may not "
-                             f"reach '{cls}' sink {tool} — exfiltration")
+            for cap in _iter_capsules(v):    # incl. a Capsule nested in a list/dict/tuple
+                if cap.integrity == UNTRUSTED and self._is_sensitive(k):
+                    raise Denied(f"untrusted value steers '{k}' of {tool} "
+                                 f"(provenance: {cap.source}) — hijack")
+                if cls is not None and ANY not in cap.readers and cls not in cap.readers:
+                    raise Denied(f"confidential value (readers={set(cap.readers)}) may "
+                                 f"not reach '{cls}' sink {tool} — exfiltration")
         return True
 
     def _tag_output(self, tool, args, result, source, readers):
         """Capability of a tool's OUTPUT: untrusted if this tool is an untrusted
         source OR any input was untrusted (taint propagates through the call);
         readers = intersection of the inputs' readers and this tool's own."""
-        in_caps = [v for v in args.values() if isinstance(v, Capsule)]
+        in_caps = [c for v in args.values() for c in _iter_capsules(v)]  # incl. nested
         combined = Capsule.combine(result, *in_caps, source=tool)
         integ = UNTRUSTED if (source or combined.integrity == UNTRUSTED) else TRUSTED
         rd = combined.readers
@@ -130,7 +164,7 @@ class CapabilityEngine:
         flows into whatever the agent does next."""
         def wrapped(**kwargs):
             self.check_call(tool, kwargs)
-            raw = {k: (v.value if isinstance(v, Capsule) else v) for k, v in kwargs.items()}
+            raw = {k: _unwrap(v) for k, v in kwargs.items()}   # unwrap nested capsules
             return self._tag_output(tool, kwargs, fn(**raw), untrusted, readers)
         wrapped.__name__ = getattr(fn, "__name__", tool)
         return wrapped
@@ -164,7 +198,7 @@ class CapabilityEngine:
             tool = step["tool"]
             args = {k: self._resolve(v, env) for k, v in step.get("args", {}).items()}
             self.check_call(tool, args)
-            raw = {k: (v.value if isinstance(v, Capsule) else v) for k, v in args.items()}
+            raw = {k: _unwrap(v) for k, v in args.items()}     # unwrap nested capsules
             out = self._tag_output(tool, args, tools[tool](**raw),
                                    tool in srcs, conf.get(tool, frozenset({ANY})))
             if step.get("var"):
@@ -173,12 +207,19 @@ class CapabilityEngine:
 
     @staticmethod
     def _resolve(value, env):
-        if isinstance(value, str) and value.startswith("$"):
-            base, _, field = value[1:].partition(".")   # supports $var and $var.field
-            cap = env.get(base)
-            if cap is None:
-                return value
-            if field and isinstance(cap, Capsule) and isinstance(cap.value, dict):
-                return cap.derive(cap.value.get(field, ""))   # field inherits the taint
-            return cap
+        if isinstance(value, str):
+            if value.startswith("$$"):
+                return value[1:]                   # escaped literal "$..."
+            m = _REF.match(value)                  # only $identifier(.field) is a ref
+            if m:
+                base, field = m.group(1), m.group(2)
+                cap = env.get(base)
+                if cap is None:
+                    # A typo / renamed / failed producer step must fail CLOSED, not
+                    # silently pass the raw "$name" literal into the sink.
+                    raise Denied(f"unresolved reference {value!r} "
+                                 f"(no prior step produced '{base}')")
+                if field and isinstance(cap, Capsule) and isinstance(cap.value, dict):
+                    return cap.derive(cap.value.get(field, ""))   # field inherits taint
+                return cap
         return value                               # trusted literal

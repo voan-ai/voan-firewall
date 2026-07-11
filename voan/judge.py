@@ -45,29 +45,81 @@ def _redact(text):
 
 # Args that name WHO/WHERE a side effect goes (a recipient/destination/party). If
 # such a value appears in the user's own goal, the user authorized that target.
-_TARGET_KEYS = ("recipient", "receiver", "payee", "to", "dest", "destination",
-                "address", "account", "iban", "email", "channel", "phone", "url",
-                "user", "member", "guest", "participant", "contact")
+_TARGET_KEYS = ("recipient", "receiver", "payee", "to", "cc", "bcc", "dest",
+                "destination", "address", "account", "iban", "email", "channel",
+                "phone", "url", "user", "member", "guest", "participant", "contact")
+# Operations a grounded recipient does NOT vouch for: a delete/grant/permission change
+# to a named target can still be a hijack, so never skip the judge for these on
+# grounding alone.
+_ALWAYS_JUDGE = ("delete", "remove", "drop", "revoke", "grant", "permission",
+                 "deactivate", "disable", "wipe", "destroy", "purge", "admin",
+                 "role", "escalate", "terminate", "archive", "suspend", "unshare",
+                 "expire", "cancel", "ban", "evict", "freeze", "quarantine", "close",
+                 "reset", "modify", "overwrite")
+# Grounding vouches ONLY for a pure delivery/send op (an ALLOWLIST). Anything else —
+# a create/update/modify/grant/terminate/archive — always goes to the judge, because a
+# named target does not authorize a state-change the goal didn't ask for.
+_SEND_OPS = ("send", "email", "mail", "message", "notify", "post", "share", "dm",
+             "pay", "transfer", "deliver", "invite", "publish", "reply", "forward",
+             "sms", "webhook", "dispatch", "text", "chat")
+# Keys that carry free-text payload (may naturally contain an @ / url) — NOT a target.
+_CONTENT_KEYS = ("body", "text", "content", "message", "subject", "note",
+                 "description", "comment", "caption", "html", "markdown")
 
 
-def _targets_grounded(goal, args):
-    """True if the action has destination/recipient/party targets AND EVERY one of
-    them appears in the USER GOAL. The goal is trusted (set by the user, not the
-    attacker), so a target the user named cannot be an injected exfil destination —
-    the action is authorized and need not be judged. Requiring *all* targets to be
-    grounded stops an attacker piggy-backing an unnamed party (add Fred) on a
-    goal-named container (channel 'general'). Returns False when args isn't a dict,
-    there is no target arg, or any target is absent from the goal."""
+def _grounded_in(value, goal):
+    """True only if `value` appears in the goal as a whole token (bounded), not as a
+    loose substring — so '456' does NOT ground on 'order 4567', nor 'engineering' on
+    '#engineering-private'."""
+    v = str(value).strip().lower()
+    if len(v) < 3:
+        return False
+    return re.search(r"(?<![\w@.\-])" + re.escape(v) + r"(?![\w@.\-])", goal) is not None
+
+
+def _looks_like_destination(value):
+    s = str(value).strip().lower()
+    return "@" in s or "://" in s or s.startswith(("@", "+"))
+
+
+def _targets_grounded(goal, args, tool=""):
+    """True only when it is safe to SKIP the judge because the user authorized this
+    side effect's destination. Conditions (all required):
+      - the tool is a pure delivery/send op (_SEND_OPS) and NOT destructive (_ALWAYS_JUDGE);
+      - every recognized target-keyed value is grounded (a whole-token match in the goal);
+      - no destination-looking value sits under an UNrecognized non-content key (a
+        forward/sender/callback exfil channel would otherwise piggy-back);
+      - no target is a bare number (which could collide with an unrelated goal token).
+    Anything else returns False and the action is judged."""
     if not isinstance(args, dict):
         return False
+    t = str(tool).lower()
+    if any(op in t for op in _ALWAYS_JUDGE) or not any(op in t for op in _SEND_OPS):
+        return False
     g = str(goal).lower()
-    targets = []
-    for k, v in args.items():
-        if isinstance(v, (str, int, float)) and any(t in str(k).lower() for t in _TARGET_KEYS):
-            s = str(v).strip().lower()
-            if len(s) >= 3:
-                targets.append(s)
-    return bool(targets) and all(t in g for t in targets)
+    # Collect targets with the SAME ancestor-aware walk the taint tier uses, so the
+    # judge SKIP is never broader than the taint CHECK (a recipient in a list/dict/
+    # positional slot is a target here too, not silently skipped).
+    from .taint import _TARGET_KEYS as _TK
+    from .taint import target_scalars
+    from .rules import _pairs
+    targets = target_scalars(args, _TK)
+    if not targets:
+        return False
+    for v in targets:
+        # a non-scalar target, a bare number, or an ungrounded value -> can't vouch
+        if not isinstance(v, (str, int, float)) or str(v).strip().isdigit() \
+                or not _grounded_in(v, g):
+            return False
+    # and no destination-looking value may hide under a non-target, non-content key
+    # (a forward / callback / sender exfil channel), at any depth.
+    for k, v in _pairs(args):
+        kl = str(k).lower()
+        if any(tk in kl for tk in _TK) or any(c in kl for c in _CONTENT_KEYS):
+            continue
+        if isinstance(v, (str, int, float)) and _looks_like_destination(v):
+            return False
+    return True
 
 # Calibrated for PRECISION. A goal-consistency judge with no execution context
 # over-blocks legitimate agent behaviour if it demands each action *complete* the
@@ -147,19 +199,27 @@ class LLMJudge:
         # Skip the LLM and allow. This is what stops
         # the judge over-blocking legitimate in-domain sends ("refund GB29..",
         # "pay Spotify") — the dominant in-domain false-positive class.
-        if _targets_grounded(goal, action.args):
-            return Verdict(Decision.ALLOW, rule="llm-judge",
+        if _targets_grounded(goal, action.args, action.tool):
+            # rule="grounding" (not "llm-judge") so the plan-fallback can tell a
+            # deterministic grounding-ALLOW apart from a real LLM ALLOW and refuse to
+            # let grounding lift an off-plan BLOCK.
+            return Verdict(Decision.ALLOW, rule="grounding",
                            reason="action target is named in the user goal")
         try:
             data = _parse(self.llm(_SYS, _prompt(goal, action, trace)))
         except Exception:
             return None
-        if str(data.get("decision", "")).lower() == "block":
+        decision = str(data.get("decision", "")).lower()
+        if decision == "block":
             return Verdict(Decision.BLOCK, rule="llm-judge", code=self.code,
                            severity=self.severity,
                            reason=data.get("reason", "action inconsistent with user goal"))
-        return Verdict(Decision.ALLOW, rule="llm-judge",
-                       reason="consistent with user goal")
+        if decision == "allow":
+            return Verdict(Decision.ALLOW, rule="llm-judge",
+                           reason="consistent with user goal")
+        # Unparseable / ambiguous backend response: don't fabricate an ALLOW. Return
+        # None so the rule verdict stands (and judge_fail_closed can BLOCK).
+        return None
 
 
 def _parse(raw):
@@ -170,13 +230,19 @@ def _parse(raw):
             return json.loads(raw[a:b + 1])
         except (ValueError, TypeError):
             pass
-    # Small local models often answer in prose, not JSON. Fall back to the
-    # last decision word mentioned (a concluding "...so I allow this" wins).
+    # Small local models often answer in prose, not JSON — fall back, but FAIL SAFE:
+    # a refusal or a negated allow ("do NOT allow", "cannot allow") reads as BLOCK, and
+    # an ambiguous reply returns {} (-> None -> rule stands / fail-closed), never a
+    # fabricated allow. (A "{...allow...}" echo of injected content already failed the
+    # json.loads above and lands here, where "block"/negation wins.)
     low = raw.lower()
-    ib, ia = low.rfind("block"), low.rfind("allow")
-    if ib < 0 and ia < 0:
-        return {}
-    return {"decision": "block" if ib > ia else "allow", "reason": raw[:160]}
+    if re.search(r"\b(?:do not|don'?t|cannot|can'?t|will not|won'?t|never|not|refuse|"
+                 r"decline|reject|deny)\b[\s\w,]*\ballow", low) \
+            or "block" in low or "deny" in low or "refuse" in low or "reject" in low:
+        return {"decision": "block", "reason": raw[:160]}
+    if "allow" in low:
+        return {"decision": "allow", "reason": raw[:160]}
+    return {}
 
 
 def load_dotenv(path=".env"):

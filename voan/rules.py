@@ -61,10 +61,11 @@ DEFAULT_RULES = [
          "Destructive or self-propagating shell command",
          tools=SHELL,
          pattern=(
-             # rm recursive+force in any flag order/form (-rf, -fr, -rvf, -r -f,
-             # --recursive, --force) — the classic, and its evasions
-             r"\brm\b[^|;&\n]*(?:-r[a-z]*f|-f[a-z]*r|-r\s+-f|-f\s+-r"
-             r"|--recursive|--force)"
+             # rm with ANY recursive flag, in any position/form — recursion is the
+             # danger, so we don't require force to be adjacent (or present): -r, -rf,
+             # -fr, -Rf, "-f <path> -r", --recursive all match. --force/--no-preserve-
+             # root are kept as extra signals.
+             r"\brm\b[^|;&\n]*(?:-[a-z]*r|--recursive|--force|--no-preserve-root)"
              r"|\bfind\b[^|;&\n]*-delete|\bfind\b[^|;&\n]*-exec\s+rm"
              r"|\bdd\b[^|;&\n]*of=/dev/|\bmkfs|\bshred\b|\bwipefs\b"
              r"|>\s*/dev/(?:sd|nvme|hd|disk|mapper)|\bmv\b[^|;&\n]*\s/dev/null"
@@ -75,20 +76,45 @@ DEFAULT_RULES = [
     Rule("SHELL_PIPE_EXEC", Decision.BLOCK, "RCE", "Critical",
          "Pipe-to-shell remote payload execution",
          tools=SHELL,
-         # pipe-to-shell, plus process/command substitution: bash <(curl..),
+         # pipe-to-interpreter (sh/bash AND python/perl/ruby/node/php/pwsh — the
+         # common fetch-and-run RCE), plus process/command substitution bash <(curl..),
          # $(wget..) — fetch-and-run a remote payload without an explicit pipe.
-         pattern=r"curl[^|]*\|\s*(sh|bash)|wget[^|]*\|\s*(sh|bash)"
+         pattern=r"(?:curl|wget|fetch)[^|]*\|\s*"
+                 # allow known wrapper commands (sudo/xargs/env/…) between the pipe and
+                 # the interpreter, so `curl … | xargs bash` / `| sudo -u root bash` hit
+                 r"(?:(?:sudo|xargs|env|nice|timeout|nohup|stdbuf|command)\b[^|]*?\s)*"
+                 r"(?:sh|bash|zsh|dash|ash|ksh|fish|python[0-9.]*|perl|ruby|node|php|pwsh|powershell)\b"
+                 # download-THEN-execute via && (no pipe): `curl … -o /tmp/x && bash /tmp/x`
+                 r"|(?:curl|wget|fetch)\b[^|;]*&&\s*(?:sudo\s+)?"
+                 r"(?:sh|bash|zsh|dash|ash|ksh|python[0-9.]*|perl|ruby|node|php)\b"
                  r"|[<$]\(\s*(?:curl|wget)|iex\s*\(|invoke-expression"),
     # --- Critical: destructive data loss ------------------------------------
     Rule("DB_DESTRUCTIVE", Decision.BLOCK, "DEL", "Critical",
          "Destructive database operation",
          tools=DB,
-         # DROP/TRUNCATE (tolerating /* */ comment-whitespace evasions), plus
-         # DELETE FROM with no genuine WHERE — including the "-- where" comment
-         # trick where the only 'where' is inside a comment after the table.
-         pattern=r"drop(?:\s|/\*[^*]*\*/)+(table|database)|truncate(?:\s|/\*[^*]*\*/)+"
+         # DROP/TRUNCATE (tolerating /* */ comment-whitespace evasions); DELETE FROM
+         # or mass UPDATE with no genuine WHERE (incl. the "-- where" comment trick);
+         # and a WHERE that is a tautology (1=1 / 0=0 / WHERE true) — a fake predicate
+         # that still hits every row, so the presence of 'where' is not proof of scope.
+         pattern=r"drop(?:\s|/\*[^*]*\*/)+"
+                 r"(?:table|database|schema|view|index|sequence|role|user|type|function|trigger)"
+                 r"|truncate(?:\s|/\*[^*]*\*/)+"
                  r"|delete\s+from(?!.*\bwhere\b)"
-                 r"|delete\s+from\s+[\w\".]+\s*(?:--|/\*|;)"),
+                 r"|delete\s+from\s+[\w\".]+\s*(?:--|/\*|;)"
+                 r"|update\s+[\w\".]+\s+set\b(?!.*\bwhere\b)"
+                 r"|update\s+[\w\".]+\s+set\b[^;]*(?:--|/\*)"
+                 # a WHERE that is a TAUTOLOGY / unscoped predicate (still hits every
+                 # row) — detect the SHAPE, not a list of literals: const-op-const,
+                 # col=col, IS NOT NULL, a bare truthy constant, or 'x'='x'.
+                 r"|(?:delete\s+from|update)\b[^;]*\bwhere\b[^;]*(?:"
+                 r"\b\d+\s*(?:=|<|>|<=|>=|<>|!=)\s*\d+"    # const op const: 1=1, 2>1, 1<2
+                 r"|\b(\w+)\s*=\s*\1\b"                      # col = col (id=id)
+                 r"|'([^']*)'\s*=\s*'\2'"                    # 'x' = 'x'
+                 r")"
+                 # a bare truthy constant as the WHOLE predicate (WHERE 1 / WHERE true) —
+                 # anchored right after WHERE so a legit `WHERE status = 1` is not caught.
+                 # Terminator incl. \" because args are JSON-serialized ("… WHERE 1").
+                 r"|(?:delete\s+from|update)\b[^;]*\bwhere\s+(?:true|1)\b\s*(?:;|--|\)|\"|$)"),
     # --- High: data exfiltration to an attacker channel ---------------------
     Rule("EXFIL_CHANNEL", Decision.BLOCK, "AEX", "High",
          "Data sent to an attacker-controlled destination",
@@ -154,7 +180,11 @@ def egress_violation(args, allowlist):
     blocks encoded-IP SSRF evasions (decimal/hex/octal/IPv6) and look-alikes."""
     allowed = [a.lower().lstrip(".") for a in allowlist]
     for k, v in _pairs(args):
-        if any(dk in k.lower() for dk in _DEST_KEYS):
+        # Fail-closed host check on destination-named fields AND on any value carrying
+        # a URL scheme, wherever it sits — so an encoded-IP / dotless host in a
+        # non-dest field (e.g. {"q": "http://0x7f000001/"}) is still caught, without
+        # flagging a bare integer in free text (which has no scheme).
+        if any(dk in k.lower() for dk in _DEST_KEYS) or "://" in str(v).lower():
             host = _host(v)
             if host and not _allowed_host(host, allowed):
                 return host

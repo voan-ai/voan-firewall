@@ -48,9 +48,26 @@ class FlowMonitor:
         arguments, else None. Reads never leak (they don't send anything out)."""
         if not is_side_effect(action.tool) or not self.secrets:
             return None
-        blob = json.dumps(action.args if isinstance(action.args, dict) else {},
-                          default=str).lower()
+        args = action.args if isinstance(action.args, dict) else {}
+        blob = json.dumps(args, default=str).lower()
         for tok in _tokens(blob):
             if tok in self.secrets:
                 return tok
+        # Rejoin the ALPHANUMERIC runs of every arg value — dropping ALL separators,
+        # incl. . - _ + @ — so a secret glued to adjacent chars ('refACC12345') OR
+        # split with any separator ('secretval.ue1', 's.e.c...') is reconstructed. Both
+        # arg orders are checked so a 2-part split can't hide by swapping the halves.
+        # (Arbitrary N-part reordering is a known limit of string re-gluing; the
+        # capability engine is the per-value answer.) Secrets are normalized the same
+        # way, and the floor matches the record floor so short PIN/OTP secrets aren't skipped.
+        from .rules import _pairs
+        parts = []
+        for _k, v in _pairs(args):
+            if isinstance(v, (str, int, float)):
+                parts.extend(re.findall(r"[a-z0-9]+", str(v).lower()))
+        fwd, rev = "".join(parts), "".join(reversed(parts))
+        for sec in self.secrets:
+            s = re.sub(r"[^a-z0-9]+", "", sec)
+            if len(s) >= 4 and (s in fwd or s in rev):
+                return sec
         return None

@@ -59,17 +59,20 @@ class AuditLog:
         return evt
 
     def _write(self, evt):
-        line = json.dumps(evt, ensure_ascii=False)
         try:
             with self._lock:
                 self._rotate_if_needed()
+                # json.dumps is INSIDE the try (with default=str) so a non-serializable
+                # arg degrades to the warn-once path instead of crashing the guarded
+                # call — matters on the guard_mcp path, whose args aren't pre-sanitized.
+                line = json.dumps(evt, ensure_ascii=False, default=str)
                 with open(self.path, "a", encoding="utf-8") as f:
                     f.write(line + "\n")
-        except OSError as e:
-            # A read-only FS / full disk / missing dir must NEVER turn a guarded
-            # tool call (even a benign ALLOW) into a crash, nor mask a real BLOCK
-            # as an OSError. Warn once, keep enforcing — the decision still stands,
-            # it just isn't persisted.
+        except Exception as e:
+            # A read-only FS / full disk / missing dir / non-serializable value / an arg
+            # whose __str__ itself raises must NEVER turn a guarded tool call (even a
+            # benign ALLOW) into a crash, nor mask a real BLOCK. Audit is best-effort:
+            # warn once, keep enforcing — the decision still stands, just isn't persisted.
             if not self._warned:
                 self._warned = True
                 warnings.warn(
@@ -90,10 +93,17 @@ class AuditLog:
             pass  # rotation is best-effort; never block a write on it
 
     def _emit(self, evt):
-        self._threads = [t for t in self._threads if t.is_alive()]  # prune
-        t = threading.Thread(target=self._post, args=(evt,), daemon=True)
-        self._threads.append(t)
-        t.start()
+        # Prune/append under the lock (concurrent record() calls otherwise race and
+        # can drop an in-flight thread from flush()'s join set), and never let a
+        # thread-exhaustion RuntimeError from start() propagate into the guarded call.
+        try:
+            with self._lock:
+                self._threads = [t for t in self._threads if t.is_alive()]
+                t = threading.Thread(target=self._post, args=(evt,), daemon=True)
+                self._threads.append(t)
+            t.start()
+        except Exception:
+            pass  # dashboard streaming is best-effort; never impact enforcement
 
     def _post(self, evt):
         try:
