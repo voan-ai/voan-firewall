@@ -48,7 +48,7 @@ def _bind_args(fn, a, k):
 
 _SOURCE_HINTS = ("read", "fetch", "search", "list", "email", "web", "file", "inbox",
                  "message", "review", "lookup", "load", "browse", "get", "retrieve",
-                 "scrape", "content", "doc", "page", "mail", "calendar", "note")
+                 "scrape", "content", "doc", "page", "mail", "calendar", "note", "stream")
 # Tools whose OUTPUT is sensitive (for the Rule-of-Two capability check below).
 _SENSITIVE_HINTS = ("balance", "transaction", "account", "payment", "secret",
                     "password", "private", "salary", "ssn", "card", "health",
@@ -57,9 +57,10 @@ _SENSITIVE_HINTS = ("balance", "transaction", "account", "payment", "secret",
 # constantly puts read data in a body/subject; the hijack signal is untrusted data
 # in the RECIPIENT/DESTINATION, not in the payload. (Checking every arg over-blocks
 # ~77% of legit actions; checking only the target is the usable design.)
-_TARGET_KEYS = ("recipient", "receiver", "payee", "to", "dest", "destination",
-                "address", "account", "iban", "email", "channel", "url", "user",
-                "member", "guest", "participant", "contact")
+_TARGET_KEYS = ("recipient", "receiver", "payee", "to", "cc", "bcc", "dest",
+                "destination", "address", "account", "iban", "email", "channel", "url",
+                "user", "member", "guest", "participant", "contact", "beneficiary",
+                "wallet", "webhook", "endpoint", "forward", "sender", "reply", "delivery")
 _TOKEN = re.compile(r"[A-Za-z0-9@._+\-]{4,}")
 _STOP = {"true", "false", "null", "none", "http", "https", "status", "amount",
          "true.", "this", "that", "with", "from", "your", "please", "order",
@@ -184,6 +185,19 @@ class AutoGuard:
                     self.caps.add("sensitive")
             if snk:
                 self.caps.add("external")
+
+        if inspect.isasyncgenfunction(fn):
+            async def agwrapped(*a, **k):                # streaming tool: observe each chunk
+                held = _held(a, k)
+                if held is not None:
+                    yield held
+                    return
+                async for item in fn(*a, **k):
+                    _after(item)
+                    yield item
+            agwrapped.__name__ = getattr(fn, "__name__", str(name))
+            agwrapped._voan_original = fn
+            return agwrapped
 
         if inspect.iscoroutinefunction(fn):
             async def awrapped(*a, **k):

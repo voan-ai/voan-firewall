@@ -78,7 +78,10 @@ def _grounded_in(value, goal):
 
 
 def _looks_like_destination(value):
-    s = str(value).strip().lower()
+    # NFKC-fold first so a fullwidth / compatibility homoglyph (e.g. U+FF20 '＠') can't
+    # hide an email/handle from the destination check.
+    import unicodedata
+    s = unicodedata.normalize("NFKC", str(value)).strip().lower()
     return "@" in s or "://" in s or s.startswith(("@", "+"))
 
 

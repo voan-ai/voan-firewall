@@ -23,7 +23,8 @@ import re
 _TARGET_KEYS = ("recipient", "receiver", "payee", "beneficiary", "to", "cc", "bcc",
                 "dest", "destination", "address", "account", "iban", "wallet", "email",
                 "channel", "phone", "url", "webhook", "endpoint", "user", "member",
-                "guest", "participant", "contact")
+                "guest", "participant", "contact", "forward", "sender", "reply",
+                "delivery")
 _READ = ("get_", "read_", "list_", "search_", "find_", "retrieve", "view_", "check_",
          "fetch_", "lookup")
 # Unambiguous side-effect verbs. If any appears in the tool name it is a SINK even
@@ -130,9 +131,20 @@ class TaintTracker:
         args = action.args if isinstance(action.args, dict) else {}
         g = str(goal or "").lower()
         for v in target_scalars(args, _TARGET_KEYS):
-            if not isinstance(v, (str, int, float)):
+            if isinstance(v, (str, int, float)):
+                s = str(v).strip()
+                if len(s) >= 4 and s.lower() not in g and self._tainted(s):
+                    return s
+        # value-based fallback: a tainted, destination-looking value (email/url/handle)
+        # under ANY non-content key is an injected exfil target even if the key isn't in
+        # _TARGET_KEYS — don't rely on the key-name list alone (closes the novel-key tail).
+        from .judge import _CONTENT_KEYS, _looks_like_destination
+        from .rules import _pairs
+        for k, v in _pairs(args):
+            if any(c in str(k).lower() for c in _CONTENT_KEYS):
                 continue
-            s = str(v).strip()
-            if len(s) >= 4 and s.lower() not in g and self._tainted(s):
-                return s
+            if isinstance(v, (str, int, float)) and _looks_like_destination(v):
+                s = str(v).strip()
+                if len(s) >= 4 and s.lower() not in g and self._tainted(s):
+                    return s
         return None

@@ -32,22 +32,44 @@ SENSITIVE_PARAMS = ("recipient", "receiver", "payee", "beneficiary", "to", "cc",
                     "dest", "destination", "address", "account", "iban", "wallet",
                     "url", "webhook", "endpoint", "command", "cmd", "path", "channel",
                     "email", "phone", "user", "member", "guest", "participant",
-                    "contact", "query")
+                    "contact", "query", "forward", "sender", "reply", "delivery")
 
 _REF = re.compile(r"^\$([A-Za-z_]\w*)(?:\.(.+))?$")
 
 
-def _iter_capsules(value):
-    """Yield every Capsule nested anywhere inside value (dict/list/tuple/set/frozenset),
-    so a Capsule laundered through any container is not invisible to the invariants."""
+def _iter_capsules(value, _seen=None):
+    """Yield every Capsule nested anywhere inside value — dict/list/tuple/set/frozenset
+    AND a custom object's attributes (__dict__) — so a Capsule laundered through any
+    container OR wrapped in a plain object is not invisible to the invariants. A
+    visited set guards against reference cycles."""
     if isinstance(value, Capsule):
         yield value
-    elif isinstance(value, dict):
+        return
+    if _seen is None:
+        _seen = set()
+    if id(value) in _seen:
+        return
+    if isinstance(value, dict):
+        _seen.add(id(value))
         for v in value.values():
-            yield from _iter_capsules(v)
+            yield from _iter_capsules(v, _seen)
     elif isinstance(value, (list, tuple, set, frozenset)):
+        _seen.add(id(value))
         for v in value:
-            yield from _iter_capsules(v)
+            yield from _iter_capsules(v, _seen)
+    elif not isinstance(value, type) and (hasattr(value, "__dict__")
+                                          or hasattr(type(value), "__slots__")):
+        # a Capsule laundered inside a custom object's attributes — __dict__ OR __slots__
+        _seen.add(id(value))
+        vals = list(vars(value).values()) if hasattr(value, "__dict__") else []
+        slots = getattr(type(value), "__slots__", ())
+        for sl in ((slots,) if isinstance(slots, str) else slots):
+            try:
+                vals.append(getattr(value, sl))
+            except AttributeError:
+                pass
+        for v in vals:
+            yield from _iter_capsules(v, _seen)
 
 
 def _unwrap(value):
@@ -136,7 +158,15 @@ class CapabilityEngine:
         True. Non-Capsule args are treated as trusted literals (the caller vouches)."""
         cls = self.sink_class.get(tool)
         for k, v in (args or {}).items():
-            for cap in _iter_capsules(v):    # incl. a Capsule nested in a list/dict/tuple
+            if hasattr(v, "__next__") and not isinstance(v, (str, bytes, bytearray)):
+                # a lazy iterator (generator/map/filter/…) can't be inspected without
+                # consuming it, so a Capsule could hide inside — fail closed.
+                raise Denied(f"lazy iterator argument '{k}' of {tool} cannot be verified "
+                             f"— pass a concrete list/tuple")
+            for cap in _iter_capsules(k):    # a Capsule used AS a key is control structure
+                if cap.integrity == UNTRUSTED:
+                    raise Denied(f"untrusted value used as an argument key of {tool} — hijack")
+            for cap in _iter_capsules(v):    # incl. a Capsule nested in a list/dict/tuple/obj
                 if cap.integrity == UNTRUSTED and self._is_sensitive(k):
                     raise Denied(f"untrusted value steers '{k}' of {tool} "
                                  f"(provenance: {cap.source}) — hijack")

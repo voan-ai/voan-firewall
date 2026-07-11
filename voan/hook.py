@@ -110,6 +110,23 @@ class Firewall:
             return lambda f: self.guard(f, name=name)
         tool = name or getattr(fn, "__name__", "tool")
 
+        if inspect.isasyncgenfunction(fn):
+            # async GENERATOR (streaming) tool: iscoroutinefunction is False for these,
+            # so gate on the args then observe EACH yielded chunk into provenance —
+            # otherwise the poisoned stream content never seeds taint.
+            @functools.wraps(fn)
+            async def agwrapped(*args, **kwargs):
+                action = Action(tool=tool, args=self._bind(fn, args, kwargs),
+                                agent=self.agent)
+                verdict = self._evaluate(action)
+                self.audit.record(action, verdict)
+                self._gate(action, verdict)
+                async for item in fn(*args, **kwargs):
+                    self._record_output(tool, item)
+                    yield item
+            agwrapped.__voan_guarded__ = True
+            return agwrapped
+
         if inspect.iscoroutinefunction(fn):
             @functools.wraps(fn)
             async def awrapped(*args, **kwargs):

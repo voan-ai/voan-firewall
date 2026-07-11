@@ -52,9 +52,24 @@ def _softa(fn):
     return wrapped
 
 
+def _softg(fn):
+    """Async-generator (streaming) variant: a block raised inside the stream becomes a
+    yielded observation string instead of propagating into the agent loop."""
+    @functools.wraps(fn)
+    async def wrapped(*args, **kwargs):
+        try:
+            async for item in fn(*args, **kwargs):
+                yield item
+        except BlockedAction as e:
+            yield _blockmsg(e)
+    return wrapped
+
+
 def _soft_any(guarded):
-    """Pick the sync or async soft wrapper for `guarded` (a guard()-wrapped callable);
-    an async guard returns a coroutine, which needs the async soft wrapper."""
+    """Pick the sync / async / async-generator soft wrapper for `guarded` (a
+    guard()-wrapped callable), matching its call shape."""
+    if inspect.isasyncgenfunction(guarded):
+        return _softg(guarded)
     return _softa(guarded) if inspect.iscoroutinefunction(guarded) else _soft(guarded)
 
 
