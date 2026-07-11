@@ -494,3 +494,35 @@ def test_capability_no_hiding_in_object_key_or_iterator():   # R4
                 {"recipient": (c for c in [att])}):  # lazy generator
         with pytest.raises(Denied):
             eng.check_call("send_money", arg)
+
+
+# ===========================================================================
+# Round 5 — determined attack on the PROVABLE core (CapabilityEngine invariants).
+# ===========================================================================
+def test_capability_invariants_hold_under_laundering():   # R5
+    import collections
+    eng = CapabilityEngine(sink_class={"send_money": "external", "post": "external"})
+    U = eng.source("read_web").derive("attacker")                      # untrusted
+    C = eng.source("sec", untrusted=False,
+                   readers=frozenset({"internal"})).derive("SECRET")   # confidential
+
+    def denied(tool, args):
+        try:
+            eng.check_call(tool, args)
+            return False
+        except Denied:
+            return True
+
+    # INTEGRITY: an untrusted value cannot steer a sink arg, however it is laundered.
+    assert denied("send_money", {"recipient": eng.trusted("x").derive(U)})  # capsule-in-capsule
+    assert denied("send_money", {"recipient": collections.deque([U])})       # deque
+    assert denied("send_money", {"recipient": Capsule.combine("v", eng.trusted("ok"), U)})
+    # CONFIDENTIALITY: a confidential value cannot reach an external sink, however laundered.
+    for cont in ([C], {"k": C}, {C}, collections.deque([C])):
+        assert denied("post", {"body": cont})
+    # the interpreter denies an untrusted->sink flow BY CONSTRUCTION.
+    prog = [{"var": "e", "tool": "read_web", "args": {}},
+            {"tool": "send_money", "args": {"recipient": "$e"}}]
+    with pytest.raises(Denied):
+        eng.run(prog, {"read_web": lambda: "x", "send_money": lambda recipient: "s"},
+                sources={"read_web"})

@@ -19,6 +19,7 @@ thread Capsules through their tool calls get that guarantee for those values; th
 `Firewall(taint=/flow=)` tiers are the automatic, approximate version for agents
 that don't. (CaMeL: Debenedetti et al. 2025; FIDES: Microsoft 2025.)
 """
+import collections.abc
 import re
 
 TRUSTED, UNTRUSTED = "trusted", "untrusted"
@@ -38,28 +39,32 @@ _REF = re.compile(r"^\$([A-Za-z_]\w*)(?:\.(.+))?$")
 
 
 def _iter_capsules(value, _seen=None):
-    """Yield every Capsule nested anywhere inside value — dict/list/tuple/set/frozenset
-    AND a custom object's attributes (__dict__) — so a Capsule laundered through any
-    container OR wrapped in a plain object is not invisible to the invariants. A
-    visited set guards against reference cycles."""
-    if isinstance(value, Capsule):
-        yield value
-        return
+    """Yield every Capsule reachable from value — nested in ANY mapping / non-iterator
+    iterable (list/tuple/set/frozenset/deque/namedtuple/custom Sequence), inside a
+    custom object's attributes (__dict__ OR __slots__), OR wrapped as another Capsule's
+    .value — so a Capsule can't be laundered out of the invariants by container choice.
+    A visited set guards reference cycles. (Bare iterators/generators are refused up
+    front in check_call, since inspecting them would consume them.)"""
     if _seen is None:
         _seen = set()
-    if id(value) in _seen:
+    if isinstance(value, Capsule):
+        yield value
+        if id(value) not in _seen:
+            _seen.add(id(value))
+            yield from _iter_capsules(value.value, _seen)   # a Capsule may wrap another
         return
-    if isinstance(value, dict):
+    if id(value) in _seen or isinstance(value, (str, bytes, bytearray)):
+        return
+    if isinstance(value, collections.abc.Mapping):
         _seen.add(id(value))
         for v in value.values():
             yield from _iter_capsules(v, _seen)
-    elif isinstance(value, (list, tuple, set, frozenset)):
+    elif isinstance(value, collections.abc.Iterable) and not hasattr(value, "__next__"):
         _seen.add(id(value))
         for v in value:
             yield from _iter_capsules(v, _seen)
     elif not isinstance(value, type) and (hasattr(value, "__dict__")
                                           or hasattr(type(value), "__slots__")):
-        # a Capsule laundered inside a custom object's attributes — __dict__ OR __slots__
         _seen.add(id(value))
         vals = list(vars(value).values()) if hasattr(value, "__dict__") else []
         slots = getattr(type(value), "__slots__", ())
@@ -73,16 +78,24 @@ def _iter_capsules(value, _seen=None):
 
 
 def _unwrap(value):
-    """Replace every nested Capsule with its .value, preserving structure, so the
-    real tool never receives a raw Capsule object."""
+    """Replace every nested Capsule with its .value, preserving structure, so the real
+    tool never receives a raw Capsule object (recurses into a Capsule's .value too)."""
     if isinstance(value, Capsule):
-        return value.value
-    if isinstance(value, dict):
+        return _unwrap(value.value)
+    if isinstance(value, (str, bytes, bytearray)):
+        return value
+    if isinstance(value, collections.abc.Mapping):
         return {k: _unwrap(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, tuple):
+        items = [_unwrap(v) for v in value]
+        return value._make(items) if hasattr(value, "_make") else tuple(items)
+    if isinstance(value, (list, set, frozenset)):
         return type(value)(_unwrap(v) for v in value)
-    if isinstance(value, (set, frozenset)):
-        return type(value)(_unwrap(v) for v in value)
+    if isinstance(value, collections.abc.Iterable) and not hasattr(value, "__next__"):
+        try:
+            return type(value)(_unwrap(v) for v in value)
+        except Exception:
+            return value
     return value
 
 
