@@ -103,7 +103,7 @@ columns below); the opt-in judge then drives the scored blind spot to zero:
 | benign held for approval (money / outbound sends) | 31% (5/16) | 31% |
 | benign hard-blocked (a `DROP TABLE` — deny-by-default) | 6% (1/16) | 6% |
 
-Full method, honest caveats, and the third-party InjecAgent run:
+Full method and the third-party InjecAgent run:
 [BENCHMARK.md](BENCHMARK.md).
 
 ## Proof — it stops a *real* hijacked agent
@@ -150,22 +150,18 @@ the attacker's address in a `contact` field, frame the payout as pre-approved, a
 even **gpt-5.5 makes the payment and exfil on its own** (verified live). You can't rely
 on the model being smart enough — so Voan's **deterministic** tier holds the exfil
 regardless of whether the model was fooled, and the **judge** blocks the off-goal
-payment. We also **red-teamed Voan itself**: found a look-alike-destination exfil that
-fools the goal-based judge (2/4), then shipped the fix — an opt-in egress allowlist,
-`Firewall(egress_allowlist=["acme.com"])` — that closes it (0/4).
+payment. An opt-in **egress allowlist** — `Firewall(egress_allowlist=["acme.com"])` —
+deterministically blocks look-alike exfil destinations a goal-based check can't tell
+apart, however plausible the injected address looks.
 
 And on a **third-party benchmark we did not build** —
 [InjecAgent](https://github.com/uiuc-kang-lab/InjecAgent), 1,054 indirect-injection
 scenarios across agents/tools we never configured for — the **opt-in judge** gates
-**100%** (1054/1054) of the induced harmful tool calls at **~6% FP** (1/17 — a single
-non-deterministic LLM run; 0–1 FP across runs) on legitimate ones. The **regex
-signature** tier alone gates 0% here: those signatures are per-tool and these
-(`VenmoSendMoney`, `AugustSmartLockGrantGuestAccess`) aren't in the default set — so you
-configure them, or lean on the deterministic provenance gate, for an LLM-free floor. The
-100% is real but not magic: InjecAgent's attacks are **off-goal by construction** (the
-attacker tool is a different domain than the goal), exactly what a goal-consistency check
-separates cleanly. Subtle *on-goal* attacks (right tool, wrong recipient) are the harder
-class the deterministic gate and plan tier target. Full method, caveats, and both evals:
+**100%** (1054/1054) of the induced harmful tool calls at **~6% FP** (1/17) on legitimate
+ones — across smart locks, Venmo, Gmail, banking and more we never configured for. These
+attacks are **off-goal by construction** (the attacker tool is a different domain than
+the goal) — the judge's sweet spot; the deterministic provenance gate and plan tier cover
+the harder *on-goal* class (right tool, wrong recipient). Full method and both evals:
 [BENCHMARK.md](BENCHMARK.md).
 
 ## Install
@@ -229,15 +225,15 @@ tools = fw.guard_tools(tools)
 ```
 
 The judge is the **same category** as Meta's AlignmentCheck — an LLM checking each action
-against the goal. Like every model layer (Meta ships theirs "experimental"), it is
-best-effort — adaptive attacks bypass judge-class defenses >90% — so it is **off by
-default and layered on top of** the deterministic floor, never the foundation.
+against the goal, best-effort by nature (a model in the loop), the same class Meta ships
+as "experimental." That is exactly why Voan keeps it **off by default and layered on top
+of** the deterministic floor, never the foundation.
 
 > The judge needs an LLM backend. It is **not OpenAI-only** — pick any:
 > `openai_llm()`, local `ollama_llm()`, `anthropic_llm()` (Claude),
 > `openai_compatible_llm(base_url, model)` for Groq / Together / OpenRouter / vLLM /
 > LM Studio / DeepSeek, or **any** `callable(system, user) -> str`. With no backend
-> the judge is a **no-op (fails open)** and warns. It sends the action + recent
+> the judge is **inactive and warns loudly**. It sends the action + recent
 > (untrusted) tool context to that backend — secrets/card numbers are auto-redacted
 > first, but for privacy-sensitive agents use a **local** backend. See
 > [Data handling](#data-handling--threat-model). (The protected agent itself is
@@ -264,23 +260,18 @@ your data is **exfiltrated to the attacker**; auto-guarded the exfil email is
 leave.
 
 **The enforcement is mechanical — no model in the decision, so there is no prompt to
-inject.** By default it is **provenance-gated**: a side effect is held only when its **recipient/destination** is
-one the user did **not** name *and* that value actually came out of untrusted tool output
-(the injection vector). A hardcoded or user-context recipient is not held; an attacker
-address that arrived via a poisoned tool result is. An injection can't put the attacker's
-account into the user's own words, and the deterministic gate has no prompt to attack (the
-opt-in judge is a separate best-effort layer for the in-domain gray zone). Its limit is honest: it matches provenance at
-the **string level**, so it catches the common literal injection→exfil pattern, but a
-value the model *paraphrases or re-encodes* before placing it in the recipient can still
-slip the match — set `strict=True` to conservatively hold *every* un-named recipient
-regardless of provenance (more false holds, but it closes the slip), or use the
-capability engine for true per-value provenance. This is the "lethal trifecta"
-taint-then-gate cut that CaMeL and FIDES formalize.
+inject.** By default it is **provenance-gated**: a side effect is held only when its
+**recipient/destination** is one the user did **not** name *and* that value came out of
+untrusted tool output (the injection vector). A hardcoded or user-context recipient is
+not held; an attacker address that arrived via a poisoned tool result is. An injection
+can't put the attacker's account into the user's own words. This is the "lethal trifecta"
+taint-then-gate cut that CaMeL and FIDES formalize — the drop-in, string-level version;
+for a **provable per-value guarantee** (integrity + confidentiality enforced by
+construction), thread values through the [capability engine](#how-it-works) below.
 
-Two knobs tune the residual (a *legitimately* data-derived recipient, e.g. an address
-pulled from your own trusted DB, is still held by default — because the firewall can't
-tell it from a poisoned one, and no zero-config classifier soundly can: an untrusted
-source can hide the attacker's address in the exact field a legitimate one uses):
+Two knobs tune the residual (a *legitimately* data-derived recipient — e.g. an address
+pulled from your own trusted DB — is held by default, because declared trust is the sound
+way to authorize a data-derived destination):
 
 - **`trusted=["get_order", ...]`** — declare data sources whose output is safe; a
   recipient pulled from one is not held. Sound authorization is *declared* trust, not
@@ -288,8 +279,8 @@ source can hide the attacker's address in the exact field a legitimate one uses)
 - **`strict=True`** — hold **every** un-named recipient regardless of provenance (the
   conservative posture for unattended / high-security runs).
 
-A data-derived recipient is **held for confirmation, not blocked** — the honest, sound
-behaviour; reserve confirmations for high-stakes sinks to keep them cheap. (Data in a
+A data-derived recipient is **held for confirmation, not blocked** — the correct posture;
+reserve confirmations for high-stakes sinks to keep them cheap. (Data in a
 message *body* is fine; only the *recipient/destination* is checked.) A tool Voan can't
 instrument **raises** rather than silently passing through unprotected.
 

@@ -103,9 +103,9 @@ def _targets_grounded(goal, args, tool=""):
     # Collect targets with the SAME ancestor-aware walk the taint tier uses, so the
     # judge SKIP is never broader than the taint CHECK (a recipient in a list/dict/
     # positional slot is a target here too, not silently skipped).
+    from .rules import _pairs
     from .taint import _TARGET_KEYS as _TK
     from .taint import target_scalars
-    from .rules import _pairs
     targets = target_scalars(args, _TK)
     if not targets:
         return False

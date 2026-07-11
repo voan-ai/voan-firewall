@@ -46,7 +46,8 @@ class Firewall:
         # By default an off-plan action stays HARD-BLOCKED — the plan's guarantee is
         # deterministic and adaptive-attack-proof for the committed tool multiset and any
         # PINNED args (an un-pinned arg of a planned tool can still be swapped by an
-        # injection, so pin security-relevant args like recipient/amount). Set True to let a configured judge
+        # injection, so pin security-relevant args like recipient/amount). Set True to
+        # let a configured judge
         # backstop an *incomplete* plan (it may re-allow an off-plan action it deems
         # on-goal); that trades the hard guarantee for flexibility, so it's opt-in.
         self.plan_judge_fallback = plan_judge_fallback
