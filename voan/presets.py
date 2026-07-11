@@ -61,3 +61,18 @@ def deny_by_default(families=DEFAULT_FAMILIES, decision=Decision.BLOCK,
     posture, or `families=[...]` to choose which families to harden."""
     base = list(rules if rules is not None else DEFAULT_RULES)
     return PolicyEngine(rules=base + deny_by_default_rules(families, decision))
+
+
+def safe_default_policy(rules=None):
+    """The safe-by-default policy `Firewall()` / `voan.guard()` use out of the box: the
+    signature rules PLUS a lowest-priority catch-all that HOLDS (ASK) any tool
+    `is_side_effect()` classifies as a side effect — a send / pay / write / delete, OR an
+    unrecognized non-read tool (`write_file`, `delete_user`, `grant_access`, …). So an
+    unknown side-effecting tool is held for a human by DEFAULT, not allowed; read tools
+    fall through to ALLOW. Danger signatures still BLOCK first, and front allow-rules win."""
+    from .taint import is_side_effect
+    base = list(rules if rules is not None else DEFAULT_RULES)
+    hold = Rule("SIDE_EFFECT_HOLD", Decision.ASK, "AGT", "Medium",
+                "unrecognized side-effecting tool — held for human approval",
+                predicate=lambda a: is_side_effect(a.tool))
+    return PolicyEngine(rules=base + [hold])

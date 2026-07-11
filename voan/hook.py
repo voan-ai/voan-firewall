@@ -25,12 +25,13 @@ class Firewall:
         if policy is not None:
             self.policy = policy
         else:
-            # Safe-by-DEFAULT: the dangerous side-effect families (shell/db — on top of
-            # the money/mail/http families that already ASK) are HELD for a human unless
-            # a danger signature blocks first or you add an explicit allow-rule. A
-            # firewall must not default-ALLOW an arbitrary shell command or SQL. Provide
-            # an `on_ask` callback to auto-approve known-safe calls for autonomous runs,
-            # or pass `policy=PolicyEngine()` for the raw default-allow signature tier.
+            # Safe-by-DEFAULT: the dangerous families shell/db (on top of money/mail/http,
+            # which already ASK) are HELD for a human unless a danger signature blocks
+            # first or you add an allow-rule. (`deny_by_default([...])` or the opt-in
+            # `safe_default_policy()` — which HOLDS every is_side_effect() tool — go
+            # further, but that blunt hold fights the smart tiers that authorize specific
+            # side effects, so it isn't the default.) Provide `on_ask` to auto-approve
+            # known-safe calls, or pass `policy=PolicyEngine()` for raw default-allow.
             from .presets import deny_by_default
             self.policy = deny_by_default(["shell", "db"], decision=Decision.ASK)
         self.audit = audit if audit is not None else AuditLog()

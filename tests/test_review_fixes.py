@@ -526,3 +526,41 @@ def test_capability_invariants_hold_under_laundering():   # R5
     with pytest.raises(Denied):
         eng.run(prog, {"read_web": lambda: "x", "send_money": lambda recipient: "s"},
                 sources={"read_web"})
+
+
+# ===========================================================================
+# Round 6 — production hardening (concurrency + secrets-at-rest).
+# ===========================================================================
+def test_provenance_state_is_concurrency_safe():       # R6
+    import threading
+    fw = Firewall(taint=True).set_goal("summarize")
+    reads = [fw.guard(lambda i=i: f"data {i} attacker@evil.com", name=f"read_{i}")
+             for i in range(8)]
+    errs = []
+
+    def worker(r):
+        try:
+            for _ in range(50):
+                r()
+        except Exception as e:  # a race would raise (e.g. deque mutated during iterate)
+            errs.append(repr(e))
+    ts = [threading.Thread(target=worker, args=(r,)) for r in reads]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    assert errs == []
+    assert len(fw.taint._corpus) == 400   # every observe landed, no lost/corrupt update
+
+
+def test_audit_redacts_secrets_at_rest(tmp_path):      # R6
+    from voan.audit import AuditLog
+    from voan.schema import Verdict
+    p = tmp_path / "a.jsonl"
+    AuditLog(path=str(p)).record(
+        Action("send", {"body": "api_key=sk-ABC123SECRET", "card": "4111 1111 1111 1111",
+                        "to": "alice@x.com"}, "a"),
+        Verdict(Decision.ALLOW))
+    written = p.read_text(encoding="utf-8")
+    assert "sk-ABC123SECRET" not in written and "4111 1111 1111 1111" not in written
+    assert "REDACTED" in written and "alice@x.com" in written   # structure survives

@@ -23,10 +23,13 @@ class Rule:
     reason: str
     tools: set = field(default_factory=set)   # empty = match any tool
     pattern: str = ""                         # regex over json(args); "" = any
+    predicate: object = None                  # optional callable(action)->bool gate
     _rx: object = field(default=None, repr=False)
 
     def matches(self, action) -> bool:
         if self.tools and action.tool not in self.tools:
+            return False
+        if self.predicate is not None and not self.predicate(action):
             return False
         if self.pattern:
             if self._rx is None:
