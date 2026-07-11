@@ -12,7 +12,6 @@ import functools
 import inspect
 
 from .audit import AuditLog
-from .policy import PolicyEngine
 from .rules import egress_violation
 from .schema import Action, BlockedAction, Decision, Session, Verdict
 
@@ -22,7 +21,17 @@ class Firewall:
                  on_ask=None, mode="enforce", judge=None, egress_allowlist=None,
                  judge_fail_closed=False, taint=False, rule_of_two=None, flow=None,
                  plan_judge_fallback=False):
-        self.policy = policy or PolicyEngine()
+        if policy is not None:
+            self.policy = policy
+        else:
+            # Safe-by-DEFAULT: the dangerous side-effect families (shell/db — on top of
+            # the money/mail/http families that already ASK) are HELD for a human unless
+            # a danger signature blocks first or you add an explicit allow-rule. A
+            # firewall must not default-ALLOW an arbitrary shell command or SQL. Provide
+            # an `on_ask` callback to auto-approve known-safe calls for autonomous runs,
+            # or pass `policy=PolicyEngine()` for the raw default-allow signature tier.
+            from .presets import deny_by_default
+            self.policy = deny_by_default(["shell", "db"], decision=Decision.ASK)
         self.audit = audit if audit is not None else AuditLog()
         self.agent = agent
         self.on_ask = on_ask          # callable(action, verdict) -> bool

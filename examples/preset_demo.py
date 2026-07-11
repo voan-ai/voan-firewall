@@ -6,7 +6,10 @@ danger signatures still fire and your own allow-rules (added at the front) win.
 
     python examples/preset_demo.py
 """
+import pathlib
 import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")

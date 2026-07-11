@@ -74,6 +74,12 @@ real hijacked agent below, or run the deterministic demo yourself (the
 `OPENAI_API_KEY` it needs is for the *agent* it protects, not for Voan):
 `python examples/langchain_auto_attack.py`.
 
+> **Safe by default.** `voan.guard(tools)` / `Firewall()` **hold (ASK) any unrecognized
+> shell / db / payment / mail / http action** for a human before it runs — a firewall
+> must not auto-run an arbitrary command or SQL. Give an `on_ask` callback to
+> auto-approve known-safe calls for autonomous runs, add front allow-rules, or pass
+> `policy=voan.PolicyEngine()` for the raw default-allow signature tier.
+
 ## Why not just regex rules?
 
 Pattern rules catch the loud stuff (`rm -rf`, known-bad domains). They **cannot**

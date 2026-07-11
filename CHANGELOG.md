@@ -3,7 +3,24 @@
 All notable changes to Voan Firewall. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions are the `voan` PyPI package.
 
-## [Unreleased]
+## [0.1.13] - 2026-07-12
+
+### Changed — safe-by-default posture
+- **`Firewall()` / `voan.guard()` now HOLD (ASK) unrecognized shell/db actions by
+  default** (money / mail / http already ASK), so the out-of-box posture is a sound
+  floor — no dangerous side effect runs unapproved. Provide an `on_ask` callback to
+  auto-approve known-safe calls for autonomous runs, add front allow-rules, or pass
+  `policy=PolicyEngine()` for the previous default-allow signature tier.
+
+### Security — adversarial hardening
+- Fixed **47+ bypasses / fail-opens** found by a multi-round adversarial review plus a
+  hands-on re-attack across every tier (regex signatures, taint/provenance, judge
+  grounding, information-flow, async guarding, adapters, MCP proxy). Each is pinned by a
+  regression test ([`tests/test_review_fixes.py`](tests/test_review_fixes.py)).
+- The **capability engine** now holds its integrity + confidentiality invariants **by
+  construction** under a determined laundering attack — a Capsule can no longer be
+  hidden in a nested container, a custom object (`__dict__` / `__slots__`), a lazy
+  iterator, or another Capsule's value; an unresolved `$ref` fails closed.
 
 ### Fixed
 - **`voan-mcp-proxy` now fails closed on ASK.** The transparent MCP proxy previously

@@ -23,8 +23,10 @@ def test_openai_dispatch_soft_block():
 
 
 def test_openai_dispatch_allows_benign():
-    guarded = guard_openai_dispatch({"run_command": lambda command: f"ran {command}"})
-    assert guarded["run_command"](command="ls") == "ran ls"
+    # a NON-dangerous tool passes through (the safe default only holds side-effect
+    # families like shell/db/pay/mail; reads and the like run freely).
+    guarded = guard_openai_dispatch({"get_weather": lambda city: f"sunny in {city}"})
+    assert guarded["get_weather"](city="Seoul") == "sunny in Seoul"
 
 
 def test_guard_callables_soft_block_preserves_order():
@@ -41,7 +43,9 @@ def test_guard_langchain_replaces_func():
                                  func=lambda command: "ran")
     guard_langchain([tool])
     assert is_block(tool.func(command="rm -rf /"))
-    assert tool.func(command="ls") == "ran"
+    # safe default: even an unrecognized shell command is HELD (deny-by-default on
+    # shell/db) — the guard is active, not just matching the destructive signature.
+    assert is_block(tool.func(command="ls"))
 
 
 def test_guard_mcp_blocks_and_returns_error_result():
