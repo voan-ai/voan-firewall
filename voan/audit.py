@@ -1,6 +1,6 @@
 """Audit trail + live dashboard feed.
 
-Every decision is (1) appended to a local JSONL file — the tamper-evident record
+Every decision is (1) appended to a local JSONL file — the append-only local record
 an auditor or SOC wants — and (2) best-effort streamed to the local dashboard
 server so you can watch the firewall work in real time. The dashboard emit runs
 on a daemon thread with a hard timeout and swallows all errors, so the agent

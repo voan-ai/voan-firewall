@@ -1,6 +1,6 @@
 <h1 align="center">Voan Firewall</h1>
 <p align="center"><b>The firewall for AI agents.</b><br>
-Catches known-bad <i>and</i> goal-inconsistent agent actions — RCE, data exfiltration, fraud — <i>before</i> they execute.</p>
+Stops hijacked agent actions — RCE, data exfiltration, fraud — <i>before</i> they execute.</p>
 
 <p align="center">
   <a href="https://pypi.org/project/voan/"><img src="https://img.shields.io/pypi/v/voan" alt="PyPI"></a>
@@ -28,9 +28,16 @@ internal services, a **finance agent** moves money, a **personal assistant** rea
 files and sends mail. One prompt injection or one poisoned tool result and *any* of
 them does something it was never asked to. **Voan Firewall sits inline on every tool
 call, in the agent's own process, and decides `allow / ask / block` before any side
-effect happens — whatever the agent, framework, or model.** Think of it as the
-antivirus/EDR layer for agents: deterministic tiers plus an optional LLM judge for the
-gray zone.
+effect happens — whatever the agent, framework, or model.** Like Meta's LlamaFirewall
+and Lakera, Voan is **layered** — deterministic checks plus a model layer. Two things set
+it apart. First, *what the deterministic tier does*: theirs is signature/regex (Meta adds
+static code analysis); Voan's is **provenance and capability** — the CaMeL/FIDES dataflow
+approach, which tracks where each value came from and won't let an untrusted one steer a
+side effect, **by construction, no model to fool.** Second, Voan keeps its model layer —
+the judge, the same category as Meta's AlignmentCheck — **optional and off by default**,
+whereas Lakera's injection classifier and Meta's PromptGuard are primary detectors. (Meta
+itself ships AlignmentCheck "experimental," and the field's finding is that probabilistic
+defenses *mitigate, not eliminate* — which is why Voan's foundation is deterministic.)
 
 ```
 Voan Firewall  → runtime:    block the exploit as it happens   (this repo)
@@ -73,8 +80,8 @@ Pattern rules catch the loud stuff (`rm -rf`, known-bad domains). They **cannot*
 tell whether a *benign-looking* action — an email to a normal address, a data
 export — is what the user asked for, or was hijacked by poisoned tool output.
 
-Voan's answer is **deterministic, not another model**. It tracks where each value
-came from and holds a side effect whose destination arrived via untrusted tool output
+Voan's answer for this class is a **deterministic provenance gate**. It tracks where each
+value came from and holds a side effect whose destination arrived via untrusted tool output
 and was never named in the user's request — the exfiltration path — with **no LLM in
 the gate to fool** (the provenance / taint / capability tiers). That covers the
 injected-recipient class *by construction*, not by a percentage, and it can't be
@@ -83,8 +90,10 @@ prompted away.
 The one thing a deterministic gate can't ground is an *in-domain* hijack — a payment
 to an attacker still "looks" like a legitimate payment. For that gray zone Voan adds an
 **opt-in LLM judge** that compares each action against the user's goal (it only ever
-*escalates* to BLOCK, never loosens). On a hand-curated 36-case set, regex rules alone
-silently allow ~30% of attacks; the judge closes that blind spot to zero:
+*escalates* to BLOCK, never loosens). On a hand-curated 36-case set, the regex tier alone
+silently allows ~30% of attacks — mostly the injected-recipient exfil class the
+deterministic provenance gate already covers by construction (not scored in the two
+columns below); the opt-in judge then drives the scored blind spot to zero:
 
 | 36-case set · 20 attacks + 16 benign | regex only | **+ Voan judge** |
 |---|:--:|:--:|
@@ -105,7 +114,7 @@ falls for it too) is given a routine task and reads a tool result. That result i
 **poisoned**: the attacker's address is planted in a `contact` field, wrapped in a
 pre-approved-payment note that reads like ordinary record-keeping. Nothing says
 "override" — the model complies because it looks legitimate. The loop, the reasoning,
-and the tool calls are all the framework's — we add Voan with one line:
+and the tool calls are all the framework's — we add Voan's judge tier:
 `guard_langchain(tools, firewall=fw)`.
 
 ```
@@ -120,10 +129,11 @@ GUARDED — guard_langchain + judge, same agent, same attack:
   >> 0 harmful actions executed — the agent safely tells the user it can't
 ```
 
-These two tiers **layer**, they don't compete: the deterministic auto-guard (the
-hero above) holds the *exfil* with **no LLM in the gate**; the **judge** shown here
-adds the *in-domain* payment — an action that still looks on-goal, so only
-intent-vs-goal reasoning catches it. Deterministic floor, judge for the gray zone.
+In this run the judge blocks both off-goal actions. The point is how the tiers **split**
+in practice: the deterministic auto-guard (the hero/GIF above) holds the *exfil* with
+**no LLM in the gate**; the **judge** adds *in-domain* actions like this payment, which
+still look on-goal, so only intent-vs-goal reasoning catches them. Deterministic floor,
+judge for the gray zone.
 
 Two runnable proofs (both need `OPENAI_API_KEY` in `.env`):
 
@@ -146,14 +156,17 @@ fools the goal-based judge (2/4), then shipped the fix — an opt-in egress allo
 
 And on a **third-party benchmark we did not build** —
 [InjecAgent](https://github.com/uiuc-kang-lab/InjecAgent), 1,054 indirect-injection
-scenarios across agents/tools we never configured for — Voan's judge gates **100%**
-(1054/1054) of the induced harmful tool calls at **~6% FP** (1/17 — a single
-non-deterministic LLM run; 0–1 FP across runs) on legitimate ones, while
-the regex tier alone gates **0%** (the tools are domain-specific). That 0→100 is the
-honest shape of it: on off-the-shelf tools like these — with no user-named recipient
-for the deterministic tiers to ground against — the *judge* is what gates the attack,
-and 100% holds because these attacks are off-goal by construction; subtle on-goal
-attacks are a harder class. Full method, caveats, and both evals: [BENCHMARK.md](BENCHMARK.md).
+scenarios across agents/tools we never configured for — the **opt-in judge** gates
+**100%** (1054/1054) of the induced harmful tool calls at **~6% FP** (1/17 — a single
+non-deterministic LLM run; 0–1 FP across runs) on legitimate ones. The **regex
+signature** tier alone gates 0% here: those signatures are per-tool and these
+(`VenmoSendMoney`, `AugustSmartLockGrantGuestAccess`) aren't in the default set — so you
+configure them, or lean on the deterministic provenance gate, for an LLM-free floor. The
+100% is real but not magic: InjecAgent's attacks are **off-goal by construction** (the
+attacker tool is a different domain than the goal), exactly what a goal-consistency check
+separates cleanly. Subtle *on-goal* attacks (right tool, wrong recipient) are the harder
+class the deterministic gate and plan tier target. Full method, caveats, and both evals:
+[BENCHMARK.md](BENCHMARK.md).
 
 ## Install
 
@@ -181,31 +194,44 @@ hijacked by poisoned tool output, blocked (0 harmful actions):
 `node sdk-js/examples/real_agent_attack.ts` (needs `OPENAI_API_KEY`). Consumed
 locally from the repo; not yet published to npm.
 
-## One line to protect an agent
+## The tiers — deterministic first
+
+The one line in the [Quickstart](#quickstart), `guard_langchain_auto`, is the tier to
+reach for first: a **deterministic provenance gate** that stops an untrusted value from
+steering a side effect, with **no model in the decision** and nothing to prompt away. It
+covers the injected-recipient exfil class *by construction*. On top of it you layer the
+rest.
+
+A cheap **regex signature floor** for the loud stuff:
 
 ```python
 import voan
 
-tools = voan.guard(tools)      # wrap your dict/list of tool functions
+tools = voan.guard(tools)   # signature blocklist — common RCE/DB/exfil patterns
 ```
 
-That one line gives you the **regex tier** (the "silently-allow 30%" column above) — a
-signature blocklist that catches *common* RCE/DB/exfil patterns but is **evadable** on
-its own (rephrased shells, `curl | python3`, tautology-`WHERE`), so don't rely on it
-alone. For a **deterministic floor** on high-stakes tools, flip to deny-by-default —
-`voan.guard(tools, policy=voan.deny_by_default(["shell", "db"]))` — which blocks any
-*unrecognized* shell/db action while your own allow-rules still win. To get the full
-intent-vs-hijack coverage, add the judge and tell it the user's goal:
+`voan.guard` catches known-bad patterns but is **evadable alone** (rephrased shells,
+`curl | python3`, tautology-`WHERE`), so it's a floor, not a wall — for high-stakes tools
+flip to deny-by-default, `voan.guard(tools, policy=voan.deny_by_default(["shell",
+"db"]))`, which blocks any *unrecognized* shell/db action while your own allow-rules win.
+
+And, for *in-domain* hijacks a deterministic gate can't ground — a payment to an attacker
+still looks like a payment — an **opt-in** goal-aware judge:
 
 ```python
 import voan
 from voan import LLMJudge, ollama_llm
 
-fw = voan.Firewall(judge=LLMJudge())     # needs a backend (see note)
+fw = voan.Firewall(judge=LLMJudge())     # opt-in, needs a backend (see note)
 fw.set_goal("Summarize record REC-1001 for me.")
 tools = fw.guard_tools(tools)
 # An agent hijacked into emailing your data now raises BlockedAction.
 ```
+
+The judge is the **same category** as Meta's AlignmentCheck — an LLM checking each action
+against the goal. Like every model layer (Meta ships theirs "experimental"), it is
+best-effort — adaptive attacks bypass judge-class defenses >90% — so it is **off by
+default and layered on top of** the deterministic floor, never the foundation.
 
 > The judge needs an LLM backend. It is **not OpenAI-only** — pick any:
 > `openai_llm()`, local `ollama_llm()`, `anthropic_llm()` (Claude),
@@ -237,15 +263,19 @@ your data is **exfiltrated to the attacker**; auto-guarded the exfil email is
 **held** — Voan saw the attacker address come out of the tool result and refuse to let it
 leave.
 
-**The enforcement is mechanical — no model in the decision, unevadable.** By default it
-is **provenance-gated**: a side effect is held only when its **recipient/destination** is
+**The enforcement is mechanical — no model in the decision, so there is no prompt to
+inject.** By default it is **provenance-gated**: a side effect is held only when its **recipient/destination** is
 one the user did **not** name *and* that value actually came out of untrusted tool output
 (the injection vector). A hardcoded or user-context recipient is not held; an attacker
-address that arrived via a poisoned tool result is. An injection cannot win, because it
-cannot put the attacker's account into the user's own words — and there is no LLM in the
-gate to fool (unlike a judge, which adaptive attacks bypass >90%). This is the
-evidence-based posture — the "lethal trifecta" taint-then-gate cut that CaMeL and FIDES
-formalize.
+address that arrived via a poisoned tool result is. An injection can't put the attacker's
+account into the user's own words, and the deterministic gate has no prompt to attack (the
+opt-in judge is a separate best-effort layer for the in-domain gray zone). Its limit is honest: it matches provenance at
+the **string level**, so it catches the common literal injection→exfil pattern, but a
+value the model *paraphrases or re-encodes* before placing it in the recipient can still
+slip the match — set `strict=True` to conservatively hold *every* un-named recipient
+regardless of provenance (more false holds, but it closes the slip), or use the
+capability engine for true per-value provenance. This is the "lethal trifecta"
+taint-then-gate cut that CaMeL and FIDES formalize.
 
 Two knobs tune the residual (a *legitimately* data-derived recipient, e.g. an address
 pulled from your own trusted DB, is still held by default — because the firewall can't
@@ -322,9 +352,12 @@ python eval/run_eval.py                # reproduce the eval numbers above
   "db"]))` blocks any *unrecognized* shell/db action while the danger signatures
   still fire and your own front-loaded allow-rules win (see
   [`examples/preset_demo.py`](examples/preset_demo.py)). Local and sub-millisecond.
-- **Judge** ([`judge.py`](voan/judge.py)) — LLM "intent vs hijack" tier, **opt-in**,
-  that only ever *escalates* to BLOCK. Adds an LLM round-trip (latency + cost) per
-  gray-zone action, so it runs off the regex hot path. Pluggable backend
+- **Judge** ([`judge.py`](voan/judge.py)) — LLM "intent vs hijack" tier (the same
+  category as Meta's AlignmentCheck), **opt-in**, that only ever *escalates* to BLOCK.
+  Adds an LLM round-trip (latency + cost) per
+  *evaluated* action (any non-blocked action not already authorized by a goal-named
+  target — including actions with no recipient at all, e.g. `run_command` / `db_query`),
+  so scope it to high-stakes tools rather than wrapping every tool. Pluggable backend
   (OpenAI / local Ollama / any callable). Set `judge_fail_closed=True` so a backend
   error/timeout **blocks** rather than silently failing open.
 - **Egress allowlist** ([`rules.py`](voan/rules.py)) — opt-in deterministic tier:

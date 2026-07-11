@@ -94,9 +94,10 @@ class AutoGuard:
 
     def violation(self, args):
         """A DESTINATION/RECIPIENT the user did not name in the goal is gated —
-        MECHANICALLY, with no model in the decision (unevadable): an injection can't
-        put the attacker's account into the user's own request. A recipient the user
-        named is allowed. By default the gate is also PROVENANCE-scoped: a recipient is
+        MECHANICALLY, with no model in the decision: an injection can't put the
+        attacker's account into the user's own request. (String-level, though: a
+        paraphrased or re-encoded address can slip; the capability engine is the
+        provable version.) A recipient the user named is allowed. By default the gate is also PROVENANCE-scoped: a recipient is
         held only if it actually arrived via untrusted tool output (the injection
         vector), so a hardcoded/user-context address is not falsely held; set
         strict=True to hold every un-named recipient regardless of provenance. The

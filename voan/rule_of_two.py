@@ -9,8 +9,9 @@ most TWO of these three properties —
 All three at once is exactly the exfiltration/hijack path: read a poisoned
 instruction, read secret data, send it out. So when a session that has ALREADY
 touched untrusted input AND sensitive data attempts an EXTERNAL side effect, hold
-it for a human (ASK). This is model-independent and adaptive-attack-proof for the
-capability it governs: no prompt can talk the firewall out of a capability count.
+it for a human (ASK). The capability COUNT is model-independent — no prompt can talk
+the firewall out of it — but soundness depends on correct capability labels, which are
+best DECLARED; the name-based default below only guesses and can be dodged by tool naming.
 
 Capabilities per tool are best DECLARED (`Firewall(rule_of_two=caps)` where caps is
 {tool: ["untrusted","sensitive","external"]}); a coarse name-based default is used

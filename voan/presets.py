@@ -56,7 +56,7 @@ def deny_by_default_rules(families=DEFAULT_FAMILIES, decision=Decision.BLOCK):
 def deny_by_default(families=DEFAULT_FAMILIES, decision=Decision.BLOCK,
                     rules=None):
     """Return a PolicyEngine that DENIES unrecognized actions in the named
-    sensitive families (default: shell, db, payment) while keeping every built-in
+    sensitive families (default: shell, db) while keeping every built-in
     signature. Pass `decision=Decision.ASK` for a softer hold-for-approval
     posture, or `families=[...]` to choose which families to harden."""
     base = list(rules if rules is not None else DEFAULT_RULES)

@@ -5,6 +5,26 @@ All notable changes to Voan Firewall. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+- **`voan-mcp-proxy` now fails closed on ASK.** The transparent MCP proxy previously
+  enforced only `BLOCK` verdicts and forwarded `ASK`-classified calls — payments
+  (`PAYMENT_HUMAN`) and outbound sends (`EXTERNAL_SEND`) — upstream **unblocked**. A
+  transparent proxy has no human to prompt, so an ASK is now held as a block: those
+  side effects no longer pass through silently. Use the in-process `guard_mcp` sensor
+  if you need the human-in-the-loop ASK path.
+
+### Docs
+- Positioning: README/BENCHMARK reframed as a **layered** firewall (like Meta
+  LlamaFirewall / Lakera) whose differentiators are (1) a **provenance/capability**
+  deterministic tier (vs. their regex/static-analysis) and (2) an **optional,
+  off-by-default** model judge (vs. their primary model detectors). The judge is the
+  same category as Meta's AlignmentCheck — one opt-in layer, not the foundation.
+- Honesty pass on module docstrings: dropped "unevadable" on the string-level
+  provenance gate (`auto.py`) and "tamper-evident" on the plain append-only audit log
+  (`audit.py`); bounded "adaptive-attack-proof" to the committed tool multiset + pinned
+  args (`hook.py`, `rule_of_two.py`); corrected `deny_by_default` default families
+  (`presets.py`: `shell, db` — not `payment`).
+
 ## [0.1.12] - 2026-07-10
 
 ### Changed — auto-instrumentation precision + safety (`guard_langchain_auto`)

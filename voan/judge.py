@@ -142,8 +142,9 @@ class LLMJudge:
             return None
         # Target-grounding (provenance-lite): if the action's destination/recipient
         # is something the USER named in their own goal, the user authorized it —
-        # it cannot be an injected target (the goal is trusted, attacker-named
-        # targets never appear in it). Skip the LLM and allow. This is what stops
+        # a target the user named is not an injected exfil destination (grounding is
+        # substring-level, so very short targets can collide — see _targets_grounded).
+        # Skip the LLM and allow. This is what stops
         # the judge over-blocking legitimate in-domain sends ("refund GB29..",
         # "pay Spotify") — the dominant in-domain false-positive class.
         if _targets_grounded(goal, action.args):

@@ -4,8 +4,9 @@ Drop it between your MCP client and server. The client reaches this proxy (spawn
 it over stdio, OR point a remote client at it over HTTP with --serve-http); the
 proxy connects UPSTREAM to the real server — a local stdio command OR a remote
 streamable-HTTP MCP server — and relays everything, but runs Voan's deterministic
-tiers (rules + egress allowlist) on every tools/call. Blocked calls return an error
-and never reach the server. No code change in the client or server.
+tiers (rules + egress allowlist) on every tools/call. A BLOCK — or an ASK the proxy
+can't prompt a human for (payments, outbound sends) — returns an error and never
+reaches the server (fail closed). No code change in the client or server.
 
     voan-mcp-proxy --allow acme.com -- python my_server.py        # stdio upstream
     voan-mcp-proxy --allow acme.com --http https://host/mcp       # remote HTTP upstream
@@ -41,7 +42,11 @@ def _build_proxy(upstream, allowlist):
         action = Action(tool=name, args=arguments or {}, agent="mcp-proxy")
         verdict = policy.evaluate(action)
         bad = egress_violation(action.args, allowlist) if allowlist else None
-        if verdict.decision == Decision.BLOCK or bad:
+        # A transparent proxy has no human to prompt, so an ASK verdict (payments,
+        # outbound sends held for approval) is enforced as a block here rather than
+        # silently forwarded upstream — fail closed, never silently pass a side effect.
+        held = verdict.decision in (Decision.BLOCK, Decision.ASK)
+        if held or bad:
             reason = f"egress to non-allowlisted '{bad}'" if bad else verdict.reason
             sys.stderr.write(f"[voan] blocked {name}: {reason}\n")
             raise ValueError(f"\U0001f6d1 Voan blocked {name}(): {reason}")

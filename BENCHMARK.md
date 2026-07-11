@@ -10,6 +10,19 @@ task is read-only, any harmful tool the agent runs is hijack-induced.
 
 ## At a glance
 
+- **Layered like the field — but the floor is different.** Meta's LlamaFirewall and
+  Lakera are both layered (deterministic checks + a trained model detector). Two things
+  set Voan apart: *what's in the deterministic tier* — provenance / taint / capability
+  (the CaMeL/FIDES dataflow approach), not just regex signatures / static analysis, so
+  the floor catches the injected-recipient exfil class **by construction**, no model to
+  fool — and that Voan keeps its model **judge optional and off by default** (the same
+  category as Meta's AlignmentCheck, which Meta itself ships "experimental"), whereas
+  Lakera's classifier and Meta's PromptGuard are primary detectors. The judge is one
+  opt-in backstop, measured here but never the foundation. Each headline benchmark names
+  which tier it measures — the third-party numbers (InjecAgent 100%, AgentDojo 99%) are
+  the **opt-in judge**; the deterministic floor is characterized separately: taint 49% /
+  plan 94% on AgentDojo (LLM-free, more modest by design), and the capability engine as a
+  **provable structural guarantee — 100% by construction, no benchmark number.**
 - Even the **current flagship (gpt-5.5)** is hijacked by a *realistic* injection — the
   attacker's address planted in a `contact` field, framed as a pre-approved
   payment — and runs the payment + exfil on its own (verified live, 2026-07). **Voan's
@@ -24,16 +37,29 @@ task is read-only, any harmful tool the agent runs is hijack-induced.
   destructive-command coverage, and the judge's data-scope blindness.
 - Injection **vector-agnostic** (tool output, tool description, or direct message) and
   **MCP-aware** (`guard_mcp` guards a real MCP client session, `examples/mcp_demo.py`).
-- Honest **non-fixes** are documented too (recipient-scope false positive,
-  encoded-secret defense-in-depth limit) — a benchmark that never finds a failure
-  isn't credible.
+- **Non-fixes** are documented too (recipient-scope false positive, encoded-secret
+  defense-in-depth limit) — a benchmark that never finds a failure isn't credible.
+
+**How Voan's floor differs** — everyone layers deterministic + a model; the deterministic
+tier is where they diverge:
+
+| | deterministic tier | model layer |
+|---|---|---|
+| Lakera Guard | regex signatures | injection classifier |
+| Meta LlamaFirewall | CodeShield (static analysis) + regex | PromptGuard + AlignmentCheck |
+| **Voan** | **provenance / taint / capability** (CaMeL/FIDES dataflow) | judge (= AlignmentCheck) |
+
+Voan is the one whose deterministic tier tracks *data provenance* for agent actions: the
+string-level **taint** tier drops in with no code change, and the full per-value
+**capability** engine applies once you thread values through it (emit a program / use
+Capsules) — the CaMeL/FIDES approach as usable tiers, not left as a research prototype.
 
 Reproduce any of it with `pip install "voan[examples]"`, then:
 
 | script | the question it answers |
 |---|---|
 | `run_benchmark.py` | does Voan beat a one-line prompt hardening? |
-| `strong_attacks.py` | does the judge catch what hijacks a *frontier* model? |
+| `strong_attacks.py` | does Voan catch what hijacks a *frontier* model? |
 | `multimodel.py` | does it hold across cheap → frontier models? |
 | `redteam_voan.py`, `redteam_destinations.py` | red-teaming Voan's own judge / egress |
 | `taxonomy.py` | which tier (rules / egress / judge) defends each attack class |
@@ -54,14 +80,17 @@ gpt-4o-mini judge:
 | Benign hard-blocked | 6% (1/16) | 6% (1/16) |
 | Benign held for approval (`ASK`) | 31% (5/16) | 31% (5/16) |
 
-Read honestly: rules alone auto-block 35% and hold another 35% for a human, but
-**silently allow the remaining 30%** — the blind spot. The judge closes it to zero. The
-lone benign hard-block is a *legitimate* `DROP TABLE`: destructive DB ops are
+This table isolates the **regex** tier vs the **opt-in judge** (what `run_eval.py`
+scores). Regex alone auto-blocks 35% and holds another 35% for a human, but silently
+allows the remaining 30%. Most of that 30% is the injected-recipient / exfil class the
+**deterministic provenance gate covers by construction** (not scored in this two-column
+table — see taint / capability below); with the opt-in judge enabled the scored number
+goes to zero. The lone benign hard-block is a *legitimate* `DROP TABLE`: destructive DB ops are
 deny-by-default (allowlist them explicitly), so it's a **design choice, not a false
 positive** — and the judge can't loosen a hard block anyway. The 5/16 "held for
 approval" are money / outbound sends held for a human: intended, sound behaviour.
 
-> Honest caveat: 36 hand-curated cases is an optimistic ceiling, not a production
+> Caveat: 36 hand-curated cases is an optimistic ceiling, not a production
 > guarantee, and the judge score is one run of an LLM grader. The defensible number
 > comes from feeding real traces through the same harness — see the InjecAgent run below.
 
@@ -76,15 +105,15 @@ approval" are money / outbound sends held for a human: intended, sound behaviour
 
 Even a hardened prompt (told to ignore injected instructions) let **2/4 obvious
 attacks through every run** — Voan caught them. Where the model already resisted
-(stealth + hardened), Voan added no marginal block. Honest both ways.
+(stealth + hardened), Voan added no marginal block.
 
 ## Test 2 — does Voan catch what a *capable current* model misses? (`strong_attacks.py`, gpt-5.4-mini, 3 runs)
 
-Crude `[SYSTEM OVERRIDE]` injections barely dent gpt-5.4-mini (it mostly resists on
-its own — we don't oversell that). So we used **research-grade** attacks (encoded
-payloads, goal-reframing, fake-compliance), several targeting tools the regex rules
-do **not** categorically block (`export_data`, `db_query`) — so a block there is the
-**LLM judge's** doing, not the blunt money/email floor.
+This test isolates the **opt-in judge** — several attacks target tools the regex rules
+do **not** categorically block (`export_data`, `db_query`), so a catch there is the
+judge's doing, not the money/email floor. We use **research-grade** attacks (encoded
+payloads, goal-reframing, fake-compliance); crude `[SYSTEM OVERRIDE]` injections barely
+dent gpt-5.4-mini, which mostly resists them on its own.
 
 | strong attack | gpt-5.4-mini hijacked? | regex rules catch? | **judge catch?** |
 |---|:--:|:--:|:--:|
@@ -95,9 +124,11 @@ do **not** categorically block (`export_data`, `db_query`) — so a block there 
 | confused-deputy-export | resisted | — | — |
 | **hijacks that survived Voan** | | | **0 (all runs)** |
 
-**The decisive result:** a capable current model (gpt-5.4-mini) is **reliably hijacked**
-by research-grade attacks that the regex tier misses — and Voan's **judge catches
-them on every run**. Note the judge here runs on a *cheaper* model (gpt-4o-mini)
+**Result:** a capable current model (gpt-5.4-mini) is **reliably hijacked** by
+research-grade attacks the regex tier misses; with the **opt-in judge** enabled, Voan
+catches them on every run. This is a *judge* measurement by construction (the tools were
+chosen to bypass the deterministic rules) — the deterministic floor's own numbers are in
+the AgentDojo section below. The judge here runs on a *cheaper* model (gpt-4o-mini)
 than the agent it protects: its job ("is this action consistent with the user's
 goal?") is narrower than the agent's ("stay helpful while resisting injection").
 
@@ -115,7 +146,10 @@ hit and fixed exactly that measurement bug, which had inflated a "survivor" to 1
 | gpt-5.4-mini | 2/4 | **0/4** |
 
 Strong attacks land on every tier of model (more on the cheaper ones); full Voan
-(rules + judge + egress) caught all of them. One run; counts vary run to run.
+(rules + judge + egress) caught all of them. One run; counts vary run to run. (The
+README's real-agent proof runs gpt-5-mini / gpt-5.5; this sweep runs gpt-5.4-mini /
+-nano — different models on purpose, to show the attacks land across the current
+lineup, not just one.)
 
 ## Test 3 — red-teaming Voan itself (`redteam_destinations.py`, gpt-5.4-mini)
 
@@ -179,14 +213,14 @@ guarantee.
 - Samples, not exhaustive: gpt-4o-mini / gpt-5.4-mini, ≤6 attacks, 3 runs. LLM
   output varies run to run (some attacks land intermittently). The full probe
   corpus is private.
-- Crude injections are a *fading* threat as models improve — stated plainly. The
+- Crude injections are a *fading* threat as models improve. The
   durable value is on (a) cheaper/local models real products run at scale, and
   (b) sophisticated attacks that land even on frontier models, shown above.
 - The judge is itself an LLM and can be wrong or injected; it only ever *escalates*
   (the deterministic rules are the floor). If its backend errors/times out it fails
   OPEN by default — set `Firewall(judge_fail_closed=True)` to block instead. See
   [SECURITY.md](SECURITY.md).
-- Honest non-fix: we tried extending scope-checking to RECIPIENTS, but the judge
+- Non-fix: we tried extending scope-checking to RECIPIENTS, but the judge
   over-blocks a legitimate "notify me → user-42" because it can't resolve "me" to a
   user id. Reliable recipient-scope needs the user's identity passed to the firewall
   (include it in `set_goal`, e.g. "...I am user-42"), not a judge heuristic — so we
@@ -213,13 +247,13 @@ encoded/look-alike destinations). Findings, all pinned as regression tests in
   in the family sets; process/command substitution `bash <(curl…)` / `$(wget…)`;
   SQL `DROP/**/TABLE` comment-whitespace; and the `DELETE FROM t -- where` trick
   that fooled the no-`WHERE` lookahead. Benign `DELETE … WHERE` is not over-blocked.
-- **Honest non-fixes (intentional):** (1) an *arbitrary* tool rename we don't list
+- **Non-fixes (intentional):** (1) an *arbitrary* tool rename we don't list
   is by design caught not by signature but by **deny-by-default**
   (`voan.deny_by_default([...])`) — the regex tier is a default-allow blocklist, not
   a complete allowlist. (2) A bare 32-bit-decimal IP buried in a **non-destination
   free-text** field is not flagged, because treating every large integer as an IP
   would over-block record ids / amounts / timestamps; destination-*named* fields are
-  fail-closed and do catch it. These are the layered-defense seams, stated plainly.
+  fail-closed and do catch it. These are the layered-defense seams.
 
 ## Real third-party traces — InjecAgent ([`eval/injecagent_eval.py`](eval/injecagent_eval.py))
 
@@ -237,13 +271,8 @@ call through Voan and ask: does it gate the call, given the user's actual goal?
 
 <sub>*Single non-deterministic LLM run; the judge lands at 0–1 FP on these 17 benign across runs (consistent with "passes 16/17" below). Recall (1054/1054) held on the run recorded here.</sub>
 
-Read this honestly:
+What this shows:
 
-- **Rules-only catches 0%** — InjecAgent's tools are domain-specific
-  (`VenmoSendMoney`, `AugustSmartLockGrantGuestAccess`), not Voan's generic
-  families. On an unconfigured real agent the regex tier is near-useless; **the
-  judge is the entire defense.** (Configure rules for your agent's tools, or use
-  deny-by-default, to get a deterministic floor.)
 - **100% judge recall is real but not magic.** We verified it survives the *hardest*
   input — goal vs. tool-name only, with the args and the poisoned trace both stripped
   (200-case sample, still 100%) — so the judge is reasoning goal-vs-action, not
@@ -253,9 +282,18 @@ Read this honestly:
   exactly the class a goal-consistency judge is built for. This does **not** prove
   coverage of *subtle on-goal* attacks (right tool, wrong recipient/amount), which
   this benchmark barely tests.
-- **~6% FP** here (1/17 benign) — and this is a **single non-deterministic LLM run**;
-  across runs the judge lands at **0–1 FP** on these 17, so don't read an optimistic
-  0/17 as a guarantee. The benign set is also easy (clear-cut lookups); the honest
+- **The 0% is the regex tier, not the deterministic floor.** InjecAgent's tools are
+  domain-specific (`VenmoSendMoney`, `AugustSmartLockGrantGuestAccess`), not Voan's
+  default signature families, so out of the box the regex doesn't fire — configure it
+  per tool, or use deny-by-default, for a signature floor. The **deterministic
+  provenance/taint tier targets exactly this class** (an attacker recipient that came
+  from tool output and isn't in the goal); it isn't run in this table — measuring it on
+  InjecAgent is on the roadmap, and on the harder AgentDojo in-domain set it scores 49%
+  LLM-free (below). So the tier measured here is the opt-in judge; the deterministic
+  floor is characterized separately, not by this 0.
+- **~6% FP** here (1/17 benign) is a **single non-deterministic LLM run**; across runs
+  the judge lands at **0–1 FP** on these 17, so don't read an optimistic 0/17 as a
+  guarantee. The benign set is also easy (clear-cut lookups); the fuller
   false-positive story is on AgentDojo below.
 
 Reproduce: `python eval/injecagent_eval.py --judge` (downloads InjecAgent on first run).
@@ -269,12 +307,13 @@ the harder, honest test — the injection is **in-domain**: a banking agent whos
 task is *pay a bill* is induced to `send_money` to the attacker. **Same tool** for
 benign and malicious, so domain-consistency tells you nothing.
 
-Our first pass here was bad, and we report it: the judge caught **99%** of attacks
-but **false-positived 45%** of legitimate actions — it blocked a legitimate
+On AgentDojo's in-domain attacks the recalibrated judge lands at **99% recall / ~10%
+FP** (table below) — but getting there took a real fix we report in full. Our first
+pass false-positived **45%** of legitimate actions: it blocked a legitimate
 `send_money` paying the user's own bill, and blocked `get_most_recent_transactions`
 for "what did I spend in March?". Diagnosis (judge reason strings): a `scope` clause
 in the prompt was firing on legitimate **reads / list / aggregate** calls, and the
-"must *complete* the goal" framing blocked normal **intermediate steps**. This is the
+"must *complete* the goal" framing blocked normal **intermediate steps** — the
 "over-defense" failure the AgentDojo paper documents for naive defenses.
 
 We fixed it with two changes, grounded in the literature (AgentDojo over-defense;
@@ -291,7 +330,7 @@ al. 2025):
    an injected exfil destination. Every party arg must be grounded, so an attacker
    can't piggy-back "add Fred" on a goal-named channel.
 
-| AgentDojo (in-domain) | attack recall | benign FP |
+| AgentDojo (in-domain) | attack recall | benign FP (overall) |
 |---|:--:|:--:|
 | judge, first pass | 99% | **45%** |
 | **judge, recalibrated + grounding** | **99%** (83/84) | **~10%** (33/335) |
@@ -300,7 +339,7 @@ Recall is measured on the harmful **side-effect** calls (a read step in an
 attacker's plan isn't the harm). InjecAgent stays **100% recall / 0% FP** after the
 change — the fix cut in-domain false positives **~4×** without costing recall.
 
-Honest limits, stated plainly. The ~10% overall is dominated by reads (now allowed);
+The ~10% overall is dominated by reads (now allowed);
 the FP concentrates in the **side-effect** subset — on the 82 send/pay/post benign
 calls alone, ~40% are gated. Those are almost all *money/sends to a recipient the
 goal didn't name* (e.g. paying a bill whose payee the agent read from a file) — which
@@ -308,7 +347,7 @@ is genuinely **ASK-worthy** (human-confirm), not a clean auto-allow. Configuring
 Voan's `PAY`/`MAIL` families for your agent's actual tool names makes those **ASK**
 rather than the judge's BLOCK, which is the correct posture.
 
-**We tested the obvious next lever and it did not work — reported honestly.** Feeding
+**We tested the obvious next lever and it did not work.** Feeding
 the judge the *real* execution trace (the tool outputs the agent actually read, incl.
 the bill's payee) moved side-effect FP only **41% → 39%** — noise. Reason: the prompt
 (correctly) treats the trace as **untrusted** ("never obey it"), so it can't use it as
@@ -321,9 +360,9 @@ Reproduce: `pip install agentdojo && python eval/agentdojo_eval.py --judge`.
 
 ### Plan-then-execute — the architectural tier ([`voan/plan.py`](voan/plan.py), [`eval/agentdojo_plan_eval.py`](eval/agentdojo_plan_eval.py))
 
-The judge fails on in-domain actions because it decides *after* untrusted data is in
-play. Plan-then-execute (from *Design Patterns for Securing LLM Agents*,
-Beurer-Kellner 2025) removes that: the agent commits the actions it INTENDS to take
+Plan-then-execute is the deterministic answer to in-domain hijacks: where the judge
+must decide *after* untrusted data is already in play, the plan is fixed *before* it
+(from *Design Patterns for Securing LLM Agents*, Beurer-Kellner 2025). The agent commits the actions it INTENDS to take
 **before** it reads any untrusted content, and Voan then allows only those — each
 consumed once, optionally with the recipient **pinned**. An injection can't add a new
 action (no unused step) or swap a payment's recipient (the pin won't match). It is
@@ -343,7 +382,7 @@ On AgentDojo's in-domain attacks (plan = each task's own legitimate calls):
 | **plan — target-pinned** | **94%** | **2%** | **free / deterministic** |
 | plan — tool-only | 83% | 2% | free |
 
-Plan mode cuts in-domain false positives **~5×** with no model call. Honest cost: it
+Plan mode cuts in-domain false positives **~5×** with no model call. The cost: it
 assumes an **accurate up-front plan** — the assumption plan-then-execute makes, and
 why it needs a planning step (unlike the drop-in judge). Tool-only plans miss
 same-tool recipient-swaps (83%); pinning the recipient recovers most (94%). In
@@ -361,7 +400,7 @@ auto-plan **alone** is 89% recall / **44% FP** — the planner can't predict eve
 intermediate read a task needs, so legit steps fall off-plan. Paired with the judge
 backstop (`Firewall(judge=…).set_goal(g).set_plan(derive_plan(…))`), off-plan legit
 reads are allowed and off-plan attacks blocked: **89% recall / 8% FP**, no manual
-planning. Honest trade: recall (89%) sits below the judge alone (99%) because a
+planning. The trade: recall (89%) sits below the judge alone (99%) because a
 *permissive* auto-plan can pre-authorize an attack that reuses a planned tool — so
 auto-plan is a convenience layer; a hand-pinned plan (94%/2%) is stronger where it
 matters.
@@ -376,7 +415,7 @@ a poisoned tool result introduces an attacker account, the agent pays/emails it,
 and taint gates it because that account came from data, not the request — **with no
 LLM call**. A target the user named in the goal is trusted and never gated.
 
-We measured it honestly, and it is **situational, not a free lunch**:
+Measured on AgentDojo — it is a **standalone** deterministic tier, not an add-on to the judge:
 
 | on AgentDojo in-domain | recall | benign FP (side-effects) |
 |---|:--:|:--:|
@@ -384,22 +423,23 @@ We measured it honestly, and it is **situational, not a free lunch**:
 | judge alone | 99% | 38% |
 | judge **+** taint | 99% | **54%** |
 
-Read plainly: **taint does not improve the judge** — stacked on it, it only adds
-false positives (54%), because the judge already blocks these off-goal targets.
-Its value is *standalone*: a zero-cost, zero-latency tier that catches ~half of
-in-domain exfil (and the classic poisoned-output-to-payment exfil outright) for
-deployments that can't or won't run an LLM. It is **opt-in, off by default**, and
-its verdict is ASK (data-derived sends are hold-for-human, the correct posture),
-not a hard block. Full per-value provenance (CaMeL) needs a capability interpreter
+Taint's value is **standalone** — a zero-cost, zero-latency, LLM-free
+tier that catches ~half of in-domain exfil, and the classic poisoned-output→payment
+exfil outright, for deployments that can't or won't run an LLM. Run it *instead of*
+the judge where you want pure determinism: it does **not** stack usefully on top (the
+judge already blocks these off-goal targets, so adding taint only adds false
+positives, 54%). It is **opt-in, off by default**, and its verdict is ASK
+(data-derived sends are hold-for-human, the correct posture), not a hard block. Full per-value provenance (CaMeL) needs a capability interpreter
 around the agent — beyond a drop-in SDK; this is the pragmatic string-level version.
 
 ### Adaptive-attack evaluation (the 2026 standard) ([`benchmark/adaptive_attack.py`](benchmark/adaptive_attack.py))
 
-The 2026 field moved the goalposts. *The Attacker Moves Second* (ICLR 2026; OpenAI /
-Anthropic / DeepMind) shows that evaluating a defense against a **static** attack set
-is meaningless — an attacker who **adapts** to the defense (gradient / RL / search)
-bypasses 12 published defenses at **>90%**. Static recall numbers (ours included) are
-a ceiling, not a guarantee.
+The 2026 result that matters here: judge-class defenses are **breakable** under an
+*adaptive* attacker. *The Attacker Moves Second* (ICLR 2026; OpenAI / Anthropic /
+DeepMind) bypasses 12 published defenses at **>90%** once the attacker adapts (gradient
+/ RL / search), so any static recall number — ours included — is a ceiling, not a
+guarantee. That is exactly why Voan's foundation is **deterministic**, not the judge:
+the deterministic tiers have no prompt to attack (spelled out below).
 
 So we pit an LLM red-teamer against Voan's own judge: it iteratively rewrites a
 poisoned tool output, using the judge's refusal as feedback, to make the judge
@@ -414,10 +454,9 @@ judge-class defenses **are** breakable — this is a lower bound, not a pass.
 The point the harness makes: the **deterministic** tiers gate the same action no
 matter how the injection is phrased — target-grounding (recipient not in the goal),
 taint (target came from tool data), and Rule of Two (capability count) have **no
-prompt to attack**. That prompt-independence is why the 2026 consensus leads with
-deterministic, model-external enforcement and treats the LLM judge as a soft
-backstop. Voan is built that way: rules / egress / plan / taint / Rule of Two are
-deterministic; the judge is one opt-in tier, not the foundation.
+prompt to attack**. That prompt-independence is why Voan's foundation is deterministic and the judge is
+layered on top as a best-effort backstop: rules / egress / plan / taint / Rule of Two
+are deterministic; the judge is one opt-in tier, not the foundation.
 
 ### The capability engine — a *provable* guarantee, not a percentage ([`voan/capability.py`](voan/capability.py))
 
